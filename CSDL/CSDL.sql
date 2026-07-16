@@ -53,7 +53,7 @@ CREATE TABLE nguoi_dung (
     so_dien_thoai VARCHAR(20) NULL,
 
     mat_khau_hash VARCHAR(255) NOT NULL,
-    anh_dai_dien_url VARCHAR(500) NULL,
+    anh_dai_dien_url LONGTEXT NULL,
 
     ngay_sinh DATE NULL,
 
@@ -463,6 +463,24 @@ CREATE TABLE khuyen_mai (
         ngay_bat_dau,
         ngay_ket_thuc
     )
+) ENGINE=InnoDB;
+
+-- ================================================================
+-- 10.1. KHUYEN MAI SAN PHAM
+-- ================================================================
+
+CREATE TABLE khuyen_mai_san_pham (
+    khuyen_mai_id INT UNSIGNED NOT NULL,
+    san_pham_id INT UNSIGNED NOT NULL,
+
+    PRIMARY KEY (khuyen_mai_id, san_pham_id),
+    KEY idx_kmsp_san_pham (san_pham_id),
+
+    CONSTRAINT fk_kmsp_khuyen_mai
+        FOREIGN KEY (khuyen_mai_id) REFERENCES khuyen_mai(id) ON DELETE CASCADE,
+
+    CONSTRAINT fk_kmsp_san_pham
+        FOREIGN KEY (san_pham_id) REFERENCES san_pham(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 -- ================================================================
@@ -982,6 +1000,25 @@ CREATE TABLE bai_viet (
         FOREIGN KEY (tac_gia_id)
         REFERENCES nguoi_dung(id)
         ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+-- ================================================================
+-- 19.1. BINH LUAN BAI VIET
+-- ================================================================
+
+CREATE TABLE binh_luan_bai_viet (
+    id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    bai_viet_id INT UNSIGNED NOT NULL,
+    ho_ten VARCHAR(150) NOT NULL,
+    email VARCHAR(150) NOT NULL,
+    noi_dung TEXT NOT NULL,
+    trang_thai ENUM('CHO_DUYET','DA_DUYET','TU_CHOI') NOT NULL DEFAULT 'CHO_DUYET',
+    ngay_tao DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    ngay_cap_nhat DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_binh_luan_bai_viet (bai_viet_id),
+    KEY idx_binh_luan_trang_thai (trang_thai),
+    CONSTRAINT fk_binh_luan_bai_viet FOREIGN KEY (bai_viet_id) REFERENCES bai_viet(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 -- ================================================================

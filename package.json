@@ -12,6 +12,7 @@
     "seed:catalog": "node scripts/seed-catalog.js",
     "seed:news": "node scripts/seed-news.js",
     "seed:customer": "node scripts/seed-customer.js",
+    "seed:commerce": "node scripts/seed-commerce.js",
     "test": "node --test",
     "check": "node --check src/server.js && node --check src/app.js"
   },

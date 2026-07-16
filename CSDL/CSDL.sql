@@ -22,10 +22,10 @@ CREATE TABLE cau_hinh_cua_hang (
     gio_lam_viec VARCHAR(255) NULL,
 
     phi_van_chuyen DECIMAL(15,2)
-        NOT NULL DEFAULT 0,
+        NOT NULL DEFAULT 30000,
 
     nguong_mien_phi_van_chuyen DECIMAL(15,2)
-        NOT NULL DEFAULT 0,
+        NOT NULL DEFAULT 300000,
 
     facebook_url VARCHAR(500) NULL,
     instagram_url VARCHAR(500) NULL,

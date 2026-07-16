@@ -1,6 +1,7 @@
 import {
   cancelUserOrder, findOrderDetails, findOrderForReview, findOrdersByUserId,
   findReviewsByOrder, insertOrderReviews,
+  createOrderInTransaction, findCheckoutContext,
 } from "../repositories/order.repository.js";
 
 const statusMap = {
@@ -8,6 +9,88 @@ const statusMap = {
   DANG_GIAO: "DANG_GIAO_HANG", DA_GIAO: "DA_GIAO_HANG", DA_HUY: "DA_HUY",
 };
 const badRequest = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
+
+const paymentMethods = new Set(["COD", "CHUYEN_KHOAN", "MOMO", "VNPAY"]);
+
+function normalizeProductIds(values) {
+  if (!Array.isArray(values)) throw badRequest("Danh sách sản phẩm không hợp lệ");
+  const ids = [...new Set(values.map(Number).filter((id) => Number.isInteger(id) && id > 0))];
+  if (!ids.length) throw badRequest("Vui lòng chọn ít nhất một sản phẩm");
+  return ids;
+}
+
+function calculateCheckout(productIds, promotionCode, context) {
+  if (context.items.length !== productIds.length) throw badRequest("Một số sản phẩm không còn trong giỏ hàng", 409);
+  for (const item of context.items) {
+    if (item.trang_thai !== "DANG_BAN") throw badRequest(`${item.ten_san_pham} đã ngừng bán`, 409);
+    if (item.so_luong > item.so_luong_ton) throw badRequest(`${item.ten_san_pham} chỉ còn ${item.so_luong_ton} sản phẩm`, 409);
+  }
+  const subtotal = context.items.reduce((sum, item) => sum + item.gia_ban * item.so_luong, 0);
+  const threshold = Number(context.settings.nguong_mien_phi_van_chuyen) || 0;
+  const standardShippingFee = Number(context.settings.phi_van_chuyen) || 0;
+  let shippingFee = threshold > 0 && subtotal >= threshold ? 0 : standardShippingFee;
+  let discountAmount = 0;
+  let promotion = null;
+  const normalizedCode = promotionCode?.trim().toUpperCase();
+  if (normalizedCode) {
+    promotion = context.promotions.find((item) => item.ma_khuyen_mai.toUpperCase() === normalizedCode);
+    if (!promotion) throw badRequest("Mã giảm giá không tồn tại hoặc đã hết hạn", 404);
+    if (subtotal < promotion.gia_tri_don_toi_thieu) throw badRequest(`Đơn hàng chưa đạt giá trị tối thiểu ${Number(promotion.gia_tri_don_toi_thieu).toLocaleString("vi-VN")}đ`);
+    const applicableIds = promotion.san_pham_ids ? promotion.san_pham_ids.split(",").map(Number) : null;
+    const eligibleSubtotal = applicableIds
+      ? context.items.filter((item) => applicableIds.includes(item.id)).reduce((sum, item) => sum + item.gia_ban * item.so_luong, 0)
+      : subtotal;
+    if (applicableIds && eligibleSubtotal === 0) throw badRequest("Mã giảm giá không áp dụng cho sản phẩm đã chọn");
+    if (promotion.loai_khuyen_mai === "PHAN_TRAM") {
+      discountAmount = eligibleSubtotal * Number(promotion.gia_tri) / 100;
+      if (promotion.giam_toi_da != null) discountAmount = Math.min(discountAmount, Number(promotion.giam_toi_da));
+    } else if (promotion.loai_khuyen_mai === "SO_TIEN") {
+      discountAmount = Math.min(eligibleSubtotal, Number(promotion.gia_tri));
+    } else if (promotion.loai_khuyen_mai === "MIEN_PHI_VAN_CHUYEN") {
+      shippingFee = 0;
+    }
+  }
+  discountAmount = Math.round(discountAmount);
+  return {
+    subtotal, discountAmount, shippingFee, totalPayment: Math.max(0, subtotal - discountAmount + shippingFee),
+    promotion,
+  };
+}
+
+function mapCheckoutSummary(summary, items, promotions) {
+  return {
+    items: items.map((item) => ({
+      productId: String(item.id), productName: item.ten_san_pham, productImage: item.anh_chinh_url,
+      price: item.gia_ban, quantity: item.so_luong, weight: item.quy_cach ?? "",
+    })),
+    subtotal: summary.subtotal, discountAmount: summary.discountAmount,
+    shippingFee: summary.shippingFee, totalPayment: summary.totalPayment,
+    appliedPromotion: summary.promotion ? { code: summary.promotion.ma_khuyen_mai, description: summary.promotion.ten_khuyen_mai } : null,
+    promotions: promotions.map((item) => ({
+      code: item.ma_khuyen_mai, title: item.ten_khuyen_mai, description: item.mo_ta,
+      minimumOrder: item.gia_tri_don_toi_thieu,
+    })),
+  };
+}
+
+export async function getCheckoutQuote(userId, input) {
+  const productIds = normalizeProductIds(input.productIds);
+  const context = await findCheckoutContext(userId, productIds);
+  return mapCheckoutSummary(calculateCheckout(productIds, input.promotionCode, context), context.items, context.promotions);
+}
+
+export async function createCustomerOrder(userId, input) {
+  const productIds = normalizeProductIds(input.productIds);
+  if (!paymentMethods.has(input.paymentMethod)) throw badRequest("Phương thức thanh toán không hợp lệ");
+  if (!input.addressId && (!input.recipientName?.trim() || !input.phone?.trim() || !input.shippingAddress?.trim())) {
+    throw badRequest("Vui lòng nhập đầy đủ thông tin giao hàng");
+  }
+  const result = await createOrderInTransaction(
+    userId, productIds, input,
+    (context) => calculateCheckout(productIds, input.promotionCode, context),
+  );
+  return { id: String(result.id), orderCode: result.orderCode };
+}
 
 export async function getCustomerOrders(userId) {
   const { orders, items } = await findOrdersByUserId(userId);

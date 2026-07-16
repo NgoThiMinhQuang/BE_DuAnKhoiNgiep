@@ -1,6 +1,16 @@
 import {
   cancelCustomerOrder, getCustomerOrderReviews, getCustomerOrders, submitCustomerOrderReviews,
+  createCustomerOrder, getCheckoutQuote,
 } from "../services/order.service.js";
+
+export async function quoteMyCheckout(request, response, next) {
+  try { response.json({ success: true, data: await getCheckoutQuote(request.auth.userId, request.body) }); }
+  catch (error) { next(error); }
+}
+export async function createMyOrder(request, response, next) {
+  try { response.status(201).json({ success: true, data: await createCustomerOrder(request.auth.userId, request.body) }); }
+  catch (error) { next(error); }
+}
 
 export async function listMyOrders(request, response, next) {
   try { response.json({ success: true, data: { orders: await getCustomerOrders(request.auth.userId) } }); }

@@ -8,6 +8,9 @@ import {
   removeCustomerAddress,
   socialLoginCustomer,
   updateCustomer,
+  googleLoginCustomer,
+  requestPasswordReset,
+  resetForgottenPassword,
 } from "../services/customer.service.js";
 
 export async function register(request, response, next) {
@@ -23,6 +26,23 @@ export async function login(request, response, next) {
 export async function socialLogin(request, response, next) {
   try { response.json({ success: true, data: await socialLoginCustomer(request.body.provider) }); }
   catch (error) { next(error); }
+}
+
+export async function googleLogin(request, response, next) {
+  try { response.json({ success: true, data: await googleLoginCustomer(request.body.credential) }); }
+  catch (error) { next(error); }
+}
+
+export async function forgotPassword(request, response, next) {
+  try { response.json({ success: true, data: await requestPasswordReset(request.body.email) }); }
+  catch (error) { next(error); }
+}
+
+export async function resetPassword(request, response, next) {
+  try {
+    await resetForgottenPassword(request.body.token, request.body.newPassword);
+    response.json({ success: true, data: { message: "Đặt lại mật khẩu thành công" } });
+  } catch (error) { next(error); }
 }
 
 export async function showMe(request, response, next) {

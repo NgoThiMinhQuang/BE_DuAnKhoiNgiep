@@ -54,6 +54,7 @@ CREATE TABLE nguoi_dung (
 
     mat_khau_hash VARCHAR(255) NOT NULL,
     anh_dai_dien_url LONGTEXT NULL,
+    google_sub VARCHAR(255) NULL,
 
     ngay_sinh DATE NULL,
 
@@ -90,6 +91,10 @@ CREATE TABLE nguoi_dung (
         so_dien_thoai
     ),
 
+    UNIQUE KEY uk_nguoi_dung_google_sub (
+        google_sub
+    ),
+
     KEY idx_nguoi_dung_vai_tro (
         vai_tro
     ),
@@ -97,6 +102,24 @@ CREATE TABLE nguoi_dung (
     KEY idx_nguoi_dung_trang_thai (
         trang_thai
     )
+) ENGINE=InnoDB;
+
+-- ================================================================
+-- 2.1. TOKEN DAT LAI MAT KHAU
+-- ================================================================
+
+CREATE TABLE dat_lai_mat_khau (
+    id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    nguoi_dung_id INT UNSIGNED NOT NULL,
+    token_hash CHAR(64) NOT NULL,
+    het_han_luc DATETIME NOT NULL,
+    da_su_dung TINYINT UNSIGNED NOT NULL DEFAULT 0,
+    ngay_tao DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_dat_lai_mat_khau_token (token_hash),
+    KEY idx_dat_lai_mat_khau_nguoi_dung (nguoi_dung_id),
+    CONSTRAINT fk_dat_lai_mat_khau_nguoi_dung
+        FOREIGN KEY (nguoi_dung_id) REFERENCES nguoi_dung(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 -- ================================================================

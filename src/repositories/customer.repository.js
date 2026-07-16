@@ -10,6 +10,11 @@ export async function findUserById(id) {
   return rows[0] ?? null;
 }
 
+export async function findUserByGoogleSub(googleSub) {
+  const [rows] = await database.execute("SELECT * FROM nguoi_dung WHERE google_sub=? LIMIT 1", [googleSub]);
+  return rows[0] ?? null;
+}
+
 export async function findAddressesByUserId(userId) {
   const [rows] = await database.execute(`
     SELECT * FROM dia_chi_nguoi_dung
@@ -37,6 +42,56 @@ export async function updateUserProfile(userId, { fullName, email, phone, avatar
 
 export async function updateUserPassword(userId, passwordHash) {
   await database.execute("UPDATE nguoi_dung SET mat_khau_hash=? WHERE id=?", [passwordHash, userId]);
+}
+
+export async function linkGoogleAccount(userId, googleSub, avatar) {
+  await database.execute(`
+    UPDATE nguoi_dung SET google_sub=?, anh_dai_dien_url=COALESCE(anh_dai_dien_url, ?)
+    WHERE id=?
+  `, [googleSub, avatar || null, userId]);
+}
+
+export async function createPasswordResetToken(userId, tokenHash, expiresAt) {
+  const connection = await database.getConnection();
+  try {
+    await connection.beginTransaction();
+    await connection.execute("DELETE FROM dat_lai_mat_khau WHERE nguoi_dung_id=?", [userId]);
+    await connection.execute(`
+      INSERT INTO dat_lai_mat_khau (nguoi_dung_id, token_hash, het_han_luc)
+      VALUES (?, ?, ?)
+    `, [userId, tokenHash, expiresAt]);
+    await connection.commit();
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
+export async function resetPasswordByToken(tokenHash, passwordHash) {
+  const connection = await database.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [tokens] = await connection.execute(`
+      SELECT * FROM dat_lai_mat_khau
+      WHERE token_hash=? AND da_su_dung=0 AND het_han_luc>NOW()
+      LIMIT 1 FOR UPDATE
+    `, [tokenHash]);
+    if (!tokens[0]) {
+      await connection.rollback();
+      return false;
+    }
+    await connection.execute("UPDATE nguoi_dung SET mat_khau_hash=? WHERE id=?", [passwordHash, tokens[0].nguoi_dung_id]);
+    await connection.execute("UPDATE dat_lai_mat_khau SET da_su_dung=1 WHERE id=?", [tokens[0].id]);
+    await connection.commit();
+    return true;
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
 }
 
 export async function insertAddress(userId, input) {

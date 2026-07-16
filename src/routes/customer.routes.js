@@ -3,6 +3,7 @@ import { Router } from "express";
 import {
   addAddress, changePassword, login, makeAddressDefault, register,
   removeAddress, showMe, socialLogin, updateMe,
+  forgotPassword, googleLogin, resetPassword,
 } from "../controllers/customer.controller.js";
 import { authenticate } from "../middleware/authenticate.js";
 import { cancelMyOrder, createMyOrder, listMyOrderReviews, listMyOrders, quoteMyCheckout, reviewMyOrder } from "../controllers/order.controller.js";
@@ -17,6 +18,9 @@ export const customerRouter = Router();
 authRouter.post("/register", register);
 authRouter.post("/login", login);
 authRouter.post("/social", socialLogin);
+authRouter.post("/google", googleLogin);
+authRouter.post("/forgot-password", forgotPassword);
+authRouter.post("/reset-password", resetPassword);
 
 customerRouter.use(authenticate);
 customerRouter.get("/me", showMe);

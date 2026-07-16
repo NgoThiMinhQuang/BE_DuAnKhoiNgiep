@@ -21,5 +21,15 @@ export const env = Object.freeze({
     name: process.env.DB_NAME ?? "rubeanora_store",
   },
   authSecret: process.env.AUTH_SECRET ?? "rubeanora-development-secret-change-me",
+  frontendUrl: process.env.FRONTEND_URL ?? "http://localhost:5173",
+  googleClientId: process.env.GOOGLE_CLIENT_ID ?? "",
+  smtp: {
+    host: process.env.SMTP_HOST ?? "",
+    port: Number.parseInt(process.env.SMTP_PORT ?? "587", 10),
+    secure: process.env.SMTP_SECURE === "true",
+    user: process.env.SMTP_USER ?? "",
+    password: process.env.SMTP_PASSWORD ?? "",
+    from: process.env.SMTP_FROM ?? "Rubeanora <no-reply@rubeanora.local>",
+  },
 });
 

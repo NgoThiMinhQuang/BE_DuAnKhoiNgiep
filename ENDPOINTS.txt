@@ -1,0 +1,134 @@
+BACKEND API - DỰ ÁN KHỞI NGHIỆP
+================================
+
+Base URL mặc định: http://localhost:5000
+API prefix:         /api
+
+Quy ước xác thực
+-----------------
+[PUBLIC]   Không cần đăng nhập.
+[USER]     Header: Authorization: Bearer <access_token>
+[ADMIN]    Header: Authorization: Bearer <access_token>
+           Tài khoản phải có vai_tro=ADMIN và trang_thai=HOAT_DONG.
+
+
+1. HỆ THỐNG VÀ DỮ LIỆU CÔNG KHAI
+---------------------------------
+[PUBLIC] GET  /                              Thông tin API
+[PUBLIC] GET  /api/health                    Kiểm tra máy chủ và MySQL
+[PUBLIC] GET  /api/home                      Dữ liệu trang chủ
+
+[PUBLIC] GET  /api/products                  Danh sách/lọc sản phẩm
+[PUBLIC] GET  /api/products/:slug            Chi tiết sản phẩm theo đường dẫn
+
+[PUBLIC] GET  /api/news                      Danh sách bài viết
+[PUBLIC] GET  /api/news/:id                  Chi tiết bài viết
+[PUBLIC] POST /api/news/:id/comments         Gửi bình luận bài viết
+
+[PUBLIC] POST /api/contact                   Gửi liên hệ
+Body gợi ý:
+{
+  "fullName": "Nguyễn Văn A",
+  "email": "a@example.com",
+  "phone": "0900000000",
+  "subject": "Cần tư vấn",
+  "message": "Nội dung cần tư vấn"
+}
+
+
+2. XÁC THỰC
+------------
+[PUBLIC] POST /api/auth/register             Đăng ký
+[PUBLIC] POST /api/auth/login                Đăng nhập email/mật khẩu
+[PUBLIC] POST /api/auth/social               Đăng nhập mạng xã hội
+[PUBLIC] POST /api/auth/google               Đăng nhập Google
+[PUBLIC] POST /api/auth/forgot-password      Gửi yêu cầu đặt lại mật khẩu
+[PUBLIC] POST /api/auth/reset-password       Đặt mật khẩu mới bằng token
+
+
+3. TÀI KHOẢN KHÁCH HÀNG
+-----------------------
+[USER] GET    /api/customers/me                              Xem hồ sơ
+[USER] PUT    /api/customers/me                              Cập nhật hồ sơ
+[USER] PUT    /api/customers/me/password                     Đổi mật khẩu
+
+[USER] POST   /api/customers/me/addresses                    Thêm địa chỉ
+[USER] PATCH  /api/customers/me/addresses/:id/default        Đặt địa chỉ mặc định
+[USER] DELETE /api/customers/me/addresses/:id                Xóa địa chỉ
+
+[USER] GET    /api/customers/me/cart                         Xem giỏ hàng
+[USER] POST   /api/customers/me/cart/items                   Thêm sản phẩm vào giỏ
+[USER] PATCH  /api/customers/me/cart/items/:productId        Sửa số lượng
+[USER] DELETE /api/customers/me/cart/items/:productId        Xóa sản phẩm khỏi giỏ
+
+[USER] GET    /api/customers/me/wishlist                     Xem danh sách yêu thích
+[USER] POST   /api/customers/me/wishlist/items               Thêm sản phẩm yêu thích
+[USER] DELETE /api/customers/me/wishlist/items/:productId    Xóa sản phẩm yêu thích
+
+[USER] POST   /api/customers/me/checkout/quote               Tính tiền trước khi đặt
+[USER] GET    /api/customers/me/orders                       Danh sách đơn của tôi
+[USER] POST   /api/customers/me/orders                       Tạo đơn hàng
+[USER] PATCH  /api/customers/me/orders/:id/cancel            Hủy đơn chờ xác nhận
+[USER] GET    /api/customers/me/orders/:id/reviews           Xem đánh giá của đơn
+[USER] POST   /api/customers/me/orders/:id/reviews           Đánh giá sản phẩm trong đơn
+
+
+4. QUẢN TRỊ
+------------
+[ADMIN] GET    /api/admin/dashboard              Thống kê tổng quan
+
+[ADMIN] GET    /api/admin/orders                 Danh sách đơn hàng
+[ADMIN] GET    /api/admin/orders/:id             Chi tiết đơn hàng
+[ADMIN] PATCH  /api/admin/orders/:id             Cập nhật trạng thái đơn/thanh toán
+
+[ADMIN] GET    /api/admin/users                  Danh sách người dùng
+[ADMIN] PATCH  /api/admin/users/:id              Cập nhật vai trò/trạng thái
+
+[ADMIN] GET    /api/admin/reviews                Danh sách đánh giá
+[ADMIN] PATCH  /api/admin/reviews/:id            Duyệt, từ chối hoặc phản hồi
+
+[ADMIN] GET    /api/admin/contacts               Danh sách liên hệ
+[ADMIN] PATCH  /api/admin/contacts/:id           Cập nhật xử lý liên hệ
+
+[ADMIN] GET    /api/admin/settings               Xem cấu hình cửa hàng
+[ADMIN] PUT    /api/admin/settings               Cập nhật cấu hình cửa hàng
+
+[ADMIN] GET    /api/admin/products               Danh sách sản phẩm quản trị
+[ADMIN] POST   /api/admin/products               Tạo sản phẩm
+[ADMIN] PUT    /api/admin/products/:id           Cập nhật sản phẩm
+[ADMIN] DELETE /api/admin/products/:id           Ngừng bán sản phẩm
+
+[ADMIN] GET    /api/admin/categories             Danh sách danh mục
+[ADMIN] POST   /api/admin/categories             Tạo danh mục
+[ADMIN] PUT    /api/admin/categories/:id         Cập nhật danh mục
+
+[ADMIN] GET    /api/admin/promotions             Danh sách khuyến mãi
+[ADMIN] POST   /api/admin/promotions             Tạo khuyến mãi
+[ADMIN] PUT    /api/admin/promotions/:id         Cập nhật khuyến mãi
+
+[ADMIN] GET    /api/admin/articles               Danh sách bài viết quản trị
+[ADMIN] POST   /api/admin/articles               Tạo bài viết
+[ADMIN] PUT    /api/admin/articles/:id           Cập nhật bài viết
+
+[ADMIN] GET    /api/admin/inventory              Tồn kho, nhà cung cấp, phiếu kho
+[ADMIN] POST   /api/admin/suppliers              Tạo nhà cung cấp
+[ADMIN] PUT    /api/admin/suppliers/:id          Cập nhật nhà cung cấp
+[ADMIN] POST   /api/admin/imports                Tạo phiếu nhập và tăng tồn kho
+[ADMIN] POST   /api/admin/exports                Tạo phiếu xuất và giảm tồn kho
+
+
+5. QUERY THƯỜNG DÙNG CHO ADMIN
+------------------------------
+GET /api/admin/orders?page=1&limit=20&status=CHO_XAC_NHAN&paymentStatus=CHUA_THANH_TOAN&search=RBB
+GET /api/admin/users?page=1&limit=20&role=KHACH_HANG&status=HOAT_DONG&search=nguyen
+GET /api/admin/reviews?page=1&limit=20&status=CHO_DUYET
+GET /api/admin/contacts?page=1&limit=20&status=MOI
+
+Giá trị trạng thái đơn hàng:
+CHO_XAC_NHAN, DA_XAC_NHAN, DANG_CHUAN_BI, DANG_GIAO, DA_GIAO, DA_HUY
+
+Giá trị trạng thái thanh toán:
+CHUA_THANH_TOAN, DA_THANH_TOAN, THAT_BAI, DA_HOAN_TIEN
+
+Giá trị trạng thái sản phẩm:
+NHAP, DANG_BAN, TAM_AN, NGUNG_BAN

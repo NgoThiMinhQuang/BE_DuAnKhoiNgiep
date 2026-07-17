@@ -1,7 +1,112 @@
 import { database } from "../config/database.js";
 
+const dashboardPeriods = {
+  week: {
+    orderCurrent: "dh.ngay_tao >= CURDATE() - INTERVAL 6 DAY AND dh.ngay_tao < CURDATE() + INTERVAL 1 DAY",
+    orderPrevious: "dh.ngay_tao >= CURDATE() - INTERVAL 13 DAY AND dh.ngay_tao < CURDATE() - INTERVAL 6 DAY",
+    userCurrent: "nd.ngay_tao >= CURDATE() - INTERVAL 6 DAY AND nd.ngay_tao < CURDATE() + INTERVAL 1 DAY",
+    userPrevious: "nd.ngay_tao >= CURDATE() - INTERVAL 13 DAY AND nd.ngay_tao < CURDATE() - INTERVAL 6 DAY",
+    bucket: "DATEDIFF(DATE(dh.ngay_tao), CURDATE() - INTERVAL 6 DAY) + 1",
+  },
+  month: {
+    orderCurrent: "dh.ngay_tao >= DATE_FORMAT(CURDATE(), '%Y-%m-01') AND dh.ngay_tao < DATE_FORMAT(CURDATE() + INTERVAL 1 MONTH, '%Y-%m-01')",
+    orderPrevious: "dh.ngay_tao >= DATE_FORMAT(CURDATE() - INTERVAL 1 MONTH, '%Y-%m-01') AND dh.ngay_tao < DATE_FORMAT(CURDATE(), '%Y-%m-01')",
+    userCurrent: "nd.ngay_tao >= DATE_FORMAT(CURDATE(), '%Y-%m-01') AND nd.ngay_tao < DATE_FORMAT(CURDATE() + INTERVAL 1 MONTH, '%Y-%m-01')",
+    userPrevious: "nd.ngay_tao >= DATE_FORMAT(CURDATE() - INTERVAL 1 MONTH, '%Y-%m-01') AND nd.ngay_tao < DATE_FORMAT(CURDATE(), '%Y-%m-01')",
+    bucket: "FLOOR((DAY(dh.ngay_tao) - 1) / 7) + 1",
+  },
+  quarter: {
+    orderCurrent: "dh.ngay_tao >= MAKEDATE(YEAR(CURDATE()), 1) + INTERVAL (QUARTER(CURDATE()) - 1) QUARTER AND dh.ngay_tao < MAKEDATE(YEAR(CURDATE()), 1) + INTERVAL QUARTER(CURDATE()) QUARTER",
+    orderPrevious: "dh.ngay_tao >= MAKEDATE(YEAR(CURDATE()), 1) + INTERVAL (QUARTER(CURDATE()) - 2) QUARTER AND dh.ngay_tao < MAKEDATE(YEAR(CURDATE()), 1) + INTERVAL (QUARTER(CURDATE()) - 1) QUARTER",
+    userCurrent: "nd.ngay_tao >= MAKEDATE(YEAR(CURDATE()), 1) + INTERVAL (QUARTER(CURDATE()) - 1) QUARTER AND nd.ngay_tao < MAKEDATE(YEAR(CURDATE()), 1) + INTERVAL QUARTER(CURDATE()) QUARTER",
+    userPrevious: "nd.ngay_tao >= MAKEDATE(YEAR(CURDATE()), 1) + INTERVAL (QUARTER(CURDATE()) - 2) QUARTER AND nd.ngay_tao < MAKEDATE(YEAR(CURDATE()), 1) + INTERVAL (QUARTER(CURDATE()) - 1) QUARTER",
+    bucket: "MONTH(dh.ngay_tao) - ((QUARTER(CURDATE()) - 1) * 3)",
+  },
+  year: {
+    orderCurrent: "YEAR(dh.ngay_tao) = YEAR(CURDATE())",
+    orderPrevious: "YEAR(dh.ngay_tao) = YEAR(CURDATE()) - 1",
+    userCurrent: "YEAR(nd.ngay_tao) = YEAR(CURDATE())",
+    userPrevious: "YEAR(nd.ngay_tao) = YEAR(CURDATE()) - 1",
+    bucket: "QUARTER(dh.ngay_tao)",
+  },
+};
+
+async function findDashboardPeriodData(period) {
+  const definition = dashboardPeriods[period];
+  const statsQuery = (orderCondition, userCondition) => `
+    SELECT
+      (SELECT COALESCE(SUM(dh.tong_thanh_toan), 0) FROM don_hang dh
+        WHERE ${orderCondition} AND dh.trang_thai_don_hang='DA_GIAO') AS revenue,
+      (SELECT COUNT(*) FROM don_hang dh WHERE ${orderCondition}) AS orders,
+      (SELECT COUNT(*) FROM nguoi_dung nd
+        WHERE ${userCondition} AND nd.vai_tro='KHACH_HANG') AS customers,
+      (SELECT COALESCE(SUM(ctdh.so_luong), 0)
+        FROM chi_tiet_don_hang ctdh
+        INNER JOIN don_hang dh ON dh.id=ctdh.don_hang_id
+        WHERE ${orderCondition} AND dh.trang_thai_don_hang='DA_GIAO') AS units_sold
+  `;
+
+  const [
+    [currentRows],
+    [previousRows],
+    [revenueSeries],
+    [orderStatusRows],
+    [bestSellingProducts],
+    [recentOrders],
+  ] = await Promise.all([
+    database.query(statsQuery(definition.orderCurrent, definition.userCurrent)),
+    database.query(statsQuery(definition.orderPrevious, definition.userPrevious)),
+    database.query(`
+      SELECT ${definition.bucket} AS bucket, COALESCE(SUM(dh.tong_thanh_toan), 0) AS revenue
+      FROM don_hang dh
+      WHERE ${definition.orderCurrent} AND dh.trang_thai_don_hang='DA_GIAO'
+      GROUP BY bucket
+      ORDER BY bucket
+    `),
+    database.query(`
+      SELECT
+        COUNT(*) AS total,
+        COALESCE(SUM(dh.trang_thai_don_hang='DA_GIAO'), 0) AS completed,
+        COALESCE(SUM(dh.trang_thai_don_hang IN ('DA_XAC_NHAN', 'DANG_CHUAN_BI', 'DANG_GIAO')), 0) AS processing,
+        COALESCE(SUM(dh.trang_thai_don_hang='CHO_XAC_NHAN'), 0) AS pending,
+        COALESCE(SUM(dh.trang_thai_don_hang='DA_HUY'), 0) AS cancelled
+      FROM don_hang dh
+      WHERE ${definition.orderCurrent}
+    `),
+    database.query(`
+      SELECT ctdh.san_pham_id AS id,
+        COALESCE(MAX(sp.ten_san_pham), MAX(ctdh.ten_san_pham)) AS name,
+        COALESCE(SUM(ctdh.so_luong), 0) AS sold
+      FROM chi_tiet_don_hang ctdh
+      INNER JOIN don_hang dh ON dh.id=ctdh.don_hang_id
+      LEFT JOIN san_pham sp ON sp.id=ctdh.san_pham_id
+      WHERE ${definition.orderCurrent} AND dh.trang_thai_don_hang='DA_GIAO'
+      GROUP BY ctdh.san_pham_id
+      ORDER BY sold DESC, name
+      LIMIT 5
+    `),
+    database.query(`
+      SELECT dh.*, nd.ho_ten AS ten_khach_hang
+      FROM don_hang dh
+      INNER JOIN nguoi_dung nd ON nd.id=dh.nguoi_dung_id
+      WHERE ${definition.orderCurrent}
+      ORDER BY dh.ngay_tao DESC
+      LIMIT 5
+    `),
+  ]);
+
+  return {
+    current: currentRows[0],
+    previous: previousRows[0],
+    revenueSeries,
+    orderStatus: orderStatusRows[0],
+    bestSellingProducts,
+    recentOrders,
+  };
+}
+
 export async function findDashboardData() {
-  const [[summary], [recentOrders], [lowStock]] = await Promise.all([
+  const [[summary], [recentOrders], [lowStock], periodEntries] = await Promise.all([
     database.query(`
       SELECT
         (SELECT COUNT(*) FROM don_hang) AS total_orders,
@@ -25,8 +130,12 @@ export async function findDashboardData() {
       WHERE so_luong_ton<=ton_toi_thieu
       ORDER BY so_luong_ton ASC, id LIMIT 8
     `),
+    Promise.all(Object.keys(dashboardPeriods).map(async (period) => [
+      period,
+      await findDashboardPeriodData(period),
+    ])),
   ]);
-  return { summary: summary[0], recentOrders, lowStock };
+  return { summary: summary[0], recentOrders, lowStock, periods: Object.fromEntries(periodEntries) };
 }
 
 export async function findAdminOrders({ status, paymentStatus, search, limit, offset }) {

@@ -29,6 +29,19 @@ Máy chủ mặc định chạy tại `http://localhost:5000`.
 - Điền thông tin MySQL trong `.env` (`DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`).
 - Backend dùng transaction khi đặt/hủy đơn và khi nhập/xuất kho để số lượng tồn không bị cập nhật dở dang.
 
+### Dùng database chung cho nhóm
+
+1. Người phụ trách tạo MySQL dùng chung và chạy `CSDL/CSDL.sql` một lần để tạo schema ban đầu.
+2. Mỗi thành viên sao chép `.env.example` thành `.env`, rồi nhận thông tin `DB_*` từ người phụ trách. Không commit `.env`.
+3. Từ các lần thay đổi sau, tạo file SQL mới trong `CSDL/migrations` theo mẫu `0001_mo_ta_thay_doi.sql` và commit cùng code.
+4. Sau khi pull code mới, chạy:
+
+```bash
+npm run migrate
+```
+
+Lệnh này ghi nhận migration đã chạy trong bảng `schema_migrations`; một file chỉ được chạy một lần trên database chung.
+
 ## Nhóm API
 
 - `GET /`: thông tin API.
@@ -55,4 +68,3 @@ src/
 └── server.js     # Khởi động máy chủ
 test/             # Kiểm thử tự động
 ```
-

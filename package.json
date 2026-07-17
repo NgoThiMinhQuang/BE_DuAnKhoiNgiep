@@ -8,14 +8,9 @@
   "scripts": {
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
-    "seed:home": "node scripts/seed-home.js",
-    "seed:catalog": "node scripts/seed-catalog.js",
-    "seed:news": "node scripts/seed-news.js",
-    "seed:customer": "node scripts/seed-customer.js",
-    "seed:commerce": "node scripts/seed-commerce.js",
-    "seed:auth": "node scripts/seed-auth.js",
     "test": "node --test test/app.test.js",
-    "check": "node --check src/server.js && node --check src/app.js"
+    "check": "node --check src/server.js && node --check src/app.js",
+    "migrate": "node scripts/migrate.js"
   },
   "engines": {
     "node": ">=20"

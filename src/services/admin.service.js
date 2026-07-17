@@ -83,15 +83,53 @@ function mapOrder(order) {
   };
 }
 
+function numberFields(value) {
+  return Object.fromEntries(Object.entries(value ?? {}).map(([key, item]) => [key, Number(item ?? 0)]));
+}
+
+function percentageChange(current, previous) {
+  if (previous === 0) return current === 0 ? 0 : 100;
+  return Math.round(((current - previous) / previous) * 1000) / 10;
+}
+
+function mapDashboardPeriod(period) {
+  const current = numberFields(period.current);
+  const previous = numberFields(period.previous);
+  return {
+    stats: current,
+    changes: {
+      revenue: percentageChange(current.revenue, previous.revenue),
+      orders: percentageChange(current.orders, previous.orders),
+      customers: percentageChange(current.customers, previous.customers),
+      unitsSold: percentageChange(current.units_sold, previous.units_sold),
+    },
+    revenueSeries: period.revenueSeries.map((item) => ({
+      bucket: Number(item.bucket),
+      revenue: Number(item.revenue),
+    })),
+    orderStatus: numberFields(period.orderStatus),
+    bestSellingProducts: period.bestSellingProducts.map((item) => ({
+      id: item.id == null ? null : String(item.id),
+      name: item.name,
+      sold: Number(item.sold),
+    })),
+    recentOrders: period.recentOrders.map(mapOrder),
+  };
+}
+
 export async function getAdminDashboard() {
   const data = await findDashboardData();
   return {
-    summary: Object.fromEntries(Object.entries(data.summary).map(([key, value]) => [key, Number(value)])),
+    summary: numberFields(data.summary),
     recentOrders: data.recentOrders.map(mapOrder),
     lowStock: data.lowStock.map((item) => ({
       id: String(item.id), productCode: item.ma_san_pham, sku: item.ma_sku,
       name: item.ten_san_pham, stock: Number(item.so_luong_ton), minimumStock: Number(item.ton_toi_thieu),
     })),
+    periods: Object.fromEntries(Object.entries(data.periods).map(([key, period]) => [
+      key,
+      mapDashboardPeriod(period),
+    ])),
   };
 }
 

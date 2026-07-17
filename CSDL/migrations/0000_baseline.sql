@@ -1,0 +1,2 @@
+-- Baseline marker for the current schema in ../CSDL.sql.
+-- Run CSDL.sql once before running npm run migrate on a new shared database.

@@ -41,6 +41,7 @@ async function mapUser(row) {
   const name = splitName(row.ho_ten);
   return {
     id: String(row.id), email: row.email, ...name, phone: row.so_dien_thoai ?? "",
+    role: row.vai_tro,
     avatar: row.anh_dai_dien_url ?? undefined,
     addresses: (await findAddressesByUserId(row.id)).map(mapAddress),
   };

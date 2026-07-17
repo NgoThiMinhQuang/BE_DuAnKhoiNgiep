@@ -14,7 +14,7 @@
     "seed:customer": "node scripts/seed-customer.js",
     "seed:commerce": "node scripts/seed-commerce.js",
     "seed:auth": "node scripts/seed-auth.js",
-    "test": "node --test",
+    "test": "node --test test/app.test.js",
     "check": "node --check src/server.js && node --check src/app.js"
   },
   "engines": {

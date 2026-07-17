@@ -26,3 +26,17 @@ test("route không tồn tại trả về 404", async () => {
   assert.equal(response.body.success, false);
 });
 
+test("API quản trị yêu cầu đăng nhập", async () => {
+  const response = await request(app).get("/api/admin/dashboard").expect(401);
+
+  assert.equal(response.body.success, false);
+});
+
+test("API liên hệ kiểm tra email và nội dung", async () => {
+  const response = await request(app)
+    .post("/api/contact")
+    .send({ fullName: "Khách thử", email: "email-sai", message: "" })
+    .expect(400);
+
+  assert.equal(response.body.success, false);
+});

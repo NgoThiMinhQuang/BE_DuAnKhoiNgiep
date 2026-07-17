@@ -17,11 +17,63 @@ export async function findOrdersByUserId(userId) {
 }
 
 export async function cancelUserOrder(userId, orderId, reason) {
-  const [result] = await database.execute(`
-    UPDATE don_hang SET trang_thai_don_hang='DA_HUY', ly_do_huy=?
-    WHERE id=? AND nguoi_dung_id=? AND trang_thai_don_hang='CHO_XAC_NHAN'
-  `, [reason, orderId, userId]);
-  return result.affectedRows > 0;
+  const connection = await database.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [orders] = await connection.execute(`
+      SELECT id, khuyen_mai_id
+      FROM don_hang
+      WHERE id=? AND nguoi_dung_id=? AND trang_thai_don_hang='CHO_XAC_NHAN'
+      FOR UPDATE
+    `, [orderId, userId]);
+    const order = orders[0];
+    if (!order) {
+      await connection.rollback();
+      return false;
+    }
+
+    const [items] = await connection.execute(`
+      SELECT san_pham_id, so_luong
+      FROM chi_tiet_don_hang
+      WHERE don_hang_id=? AND san_pham_id IS NOT NULL
+      FOR UPDATE
+    `, [order.id]);
+
+    await connection.execute(`
+      UPDATE don_hang
+      SET trang_thai_don_hang='DA_HUY', ly_do_huy=?
+      WHERE id=?
+    `, [reason, order.id]);
+
+    for (const item of items) {
+      await connection.execute(
+        "UPDATE san_pham SET so_luong_ton=so_luong_ton+? WHERE id=?",
+        [item.so_luong, item.san_pham_id],
+      );
+    }
+
+    await connection.execute(`
+      UPDATE phieu_xuat
+      SET trang_thai='DA_HUY', ghi_chu=CONCAT_WS('\n', ghi_chu, ?)
+      WHERE don_hang_id=? AND loai_xuat='BAN_HANG' AND trang_thai<>'DA_HUY'
+    `, [`Hủy theo đơn hàng: ${reason}`, order.id]);
+
+    if (order.khuyen_mai_id) {
+      await connection.execute(`
+        UPDATE khuyen_mai
+        SET so_luot_da_su_dung=GREATEST(so_luot_da_su_dung-1, 0)
+        WHERE id=?
+      `, [order.khuyen_mai_id]);
+    }
+
+    await connection.commit();
+    return true;
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
 }
 
 export async function findOrderForReview(userId, orderId) {
@@ -141,7 +193,37 @@ export async function createOrderInTransaction(userId, productIds, input, calcul
           don_hang_id, san_pham_id, ma_san_pham, ten_san_pham, anh_san_pham_url, so_luong, don_gia, thanh_tien
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `, [orderResult.insertId, item.id, item.ma_san_pham, item.ten_san_pham, item.anh_chinh_url, item.so_luong, item.gia_ban, item.gia_ban * item.so_luong]);
-      await connection.execute("UPDATE san_pham SET so_luong_ton=so_luong_ton-? WHERE id=?", [item.so_luong, item.id]);
+      const [stockResult] = await connection.execute(`
+        UPDATE san_pham
+        SET so_luong_ton=so_luong_ton-?
+        WHERE id=? AND trang_thai='DANG_BAN' AND so_luong_ton>=?
+      `, [item.so_luong, item.id, item.so_luong]);
+      if (!stockResult.affectedRows) {
+        const error = new Error(`${item.ten_san_pham} không đủ tồn kho`);
+        error.statusCode = 409;
+        throw error;
+      }
+    }
+
+    const exportCode = `PX-${orderCode}`;
+    const [exportResult] = await connection.execute(`
+      INSERT INTO phieu_xuat (
+        ma_phieu_xuat, don_hang_id, nguoi_tao_id, loai_xuat,
+        nguoi_nhan, tong_gia_tri, ghi_chu, trang_thai
+      ) VALUES (?, ?, ?, 'BAN_HANG', ?, ?, ?, 'DA_HOAN_THANH')
+    `, [
+      exportCode, orderResult.insertId, userId, shipping.name,
+      summary.subtotal, `Xuất kho tự động cho đơn ${orderCode}`,
+    ]);
+    for (const item of items) {
+      await connection.execute(`
+        INSERT INTO chi_tiet_phieu_xuat (
+          phieu_xuat_id, san_pham_id, so_luong, don_gia_xuat, thanh_tien
+        ) VALUES (?, ?, ?, ?, ?)
+      `, [
+        exportResult.insertId, item.id, item.so_luong,
+        item.gia_ban, item.gia_ban * item.so_luong,
+      ]);
     }
     await connection.query(`
       DELETE ctgh FROM chi_tiet_gio_hang ctgh

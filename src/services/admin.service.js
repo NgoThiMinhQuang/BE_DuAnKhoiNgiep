@@ -231,12 +231,42 @@ export async function changeAdminReview(reviewId, input) {
 export async function getAdminContacts(query) {
   const options = pageOptions(query);
   const result = await findAdminContacts({ status: query.status, ...options });
-  return paged(result.rows.map((item) => ({
-    id: String(item.id), fullName: item.ho_ten, email: item.email,
-    phone: item.so_dien_thoai, subject: item.tieu_de, content: item.noi_dung,
-    status: item.trang_thai, adminNote: item.ghi_chu_admin,
-    handledBy: item.nguoi_xu_ly, createdAt: item.ngay_tao,
-  })), options.page, options.limit, result.total);
+  const parseContactReplies = (item) => {
+    if (!item.ghi_chu_admin) return [];
+    try {
+      const parsed = JSON.parse(item.ghi_chu_admin);
+      if (Array.isArray(parsed.replies)) return parsed.replies;
+    } catch { /* Ghi chú cũ được giữ như một phản hồi admin. */ }
+    return [{
+      id: `legacy-${item.id}`, content: item.ghi_chu_admin, sentAt: item.ngay_tao,
+      sender: item.nguoi_xu_ly || "Nhân viên hỗ trợ", direction: "ADMIN",
+    }];
+  };
+
+  const byEmail = new Map();
+  for (const item of result.rows) {
+    const key = item.email.trim().toLowerCase();
+    let conversation = byEmail.get(key);
+    if (!conversation) {
+      conversation = {
+        id: String(item.id), fullName: item.ho_ten, email: item.email,
+        phone: item.so_dien_thoai, subject: item.tieu_de, content: item.noi_dung,
+        status: item.trang_thai, adminNote: item.ghi_chu_admin,
+        handledBy: item.nguoi_xu_ly, createdAt: item.ngay_tao, threadMessages: [],
+      };
+      byEmail.set(key, conversation);
+    }
+    conversation.threadMessages.push({
+      id: `contact-${item.id}`, content: item.noi_dung, sentAt: item.ngay_tao,
+      sender: item.ho_ten, direction: "CUSTOMER", subject: item.tieu_de,
+    }, ...parseContactReplies(item));
+  }
+
+  const conversations = [...byEmail.values()].map((item) => ({
+    ...item,
+    threadMessages: item.threadMessages.sort((left, right) => new Date(left.sentAt) - new Date(right.sentAt)),
+  }));
+  return paged(conversations, options.page, options.limit, conversations.length);
 }
 
 export async function changeAdminContact(adminId, contactId, input) {

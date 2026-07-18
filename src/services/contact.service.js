@@ -1,4 +1,6 @@
-import { createContact, findContactsByEmail, updateContactReplies } from "../repositories/contact.repository.js";
+import {
+  continueContact, createContact, findContactsByEmail, findLatestContactByEmail, updateContactReplies,
+} from "../repositories/contact.repository.js";
 import { findUserById } from "../repositories/customer.repository.js";
 
 const invalid = (message) => Object.assign(new Error(message), { statusCode: 400 });
@@ -17,8 +19,23 @@ export async function submitContact(input = {}) {
     throw invalid("Thông tin liên hệ vượt quá độ dài cho phép");
   }
 
+  const current = await findLatestContactByEmail(email);
+  if (current) {
+    const replies = parseReplies(current);
+    replies.push({
+      id: `customer-${Date.now()}`,
+      content: message,
+      sentAt: new Date().toISOString(),
+      sender: fullName,
+      direction: "CUSTOMER",
+      readAt: null,
+    });
+    await continueContact(current.id, { fullName, email, phone, adminNote: JSON.stringify({ replies }) });
+    return { id: String(current.id), status: "MOI", continued: true };
+  }
+
   const id = await createContact({ fullName, email, phone, subject, message });
-  return { id: String(id), status: "MOI" };
+  return { id: String(id), status: "MOI", continued: false };
 }
 
 const parseReplies = (row) => {
@@ -34,6 +51,7 @@ const parseReplies = (row) => {
     content: row.ghi_chu_admin,
     sentAt: row.ngay_tao,
     sender: "Nhân viên hỗ trợ",
+    direction: "ADMIN",
     readAt: null,
   }];
 };
@@ -63,9 +81,9 @@ export async function readCustomerSupportMessages(userId) {
   const rows = await findContactsByEmail(email);
   await Promise.all(rows.map(async (row) => {
     const replies = parseReplies(row);
-    if (!replies.some((reply) => !reply.readAt)) return;
+    if (!replies.some((reply) => reply.direction !== "CUSTOMER" && !reply.readAt)) return;
     const readAt = new Date().toISOString();
-    const next = replies.map((reply) => reply.readAt ? reply : { ...reply, readAt });
+    const next = replies.map((reply) => reply.direction === "CUSTOMER" || reply.readAt ? reply : { ...reply, readAt });
     await updateContactReplies(row.id, email, JSON.stringify({ replies: next }));
   }));
   return { success: true };

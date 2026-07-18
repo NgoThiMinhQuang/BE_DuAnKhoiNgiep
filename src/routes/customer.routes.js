@@ -4,6 +4,7 @@ import {
   addAddress, changePassword, login, makeAddressDefault, register,
   removeAddress, showMe, socialLogin, updateMe,
   forgotPassword, googleLogin, resetPassword,
+  listSupportMessages, markSupportMessagesRead,
 } from "../controllers/customer.controller.js";
 import { authenticate } from "../middleware/authenticate.js";
 import { cancelMyOrder, createMyOrder, listMyOrderReviews, listMyOrders, quoteMyCheckout, reviewMyOrder } from "../controllers/order.controller.js";
@@ -42,3 +43,5 @@ customerRouter.post("/me/orders", createMyOrder);
 customerRouter.patch("/me/orders/:id/cancel", cancelMyOrder);
 customerRouter.get("/me/orders/:id/reviews", listMyOrderReviews);
 customerRouter.post("/me/orders/:id/reviews", reviewMyOrder);
+customerRouter.get("/me/support-messages", listSupportMessages);
+customerRouter.patch("/me/support-messages/read", markSupportMessagesRead);

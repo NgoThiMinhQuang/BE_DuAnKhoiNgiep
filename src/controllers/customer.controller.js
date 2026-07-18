@@ -12,6 +12,7 @@ import {
   requestPasswordReset,
   resetForgottenPassword,
 } from "../services/customer.service.js";
+import { getCustomerSupportMessages, readCustomerSupportMessages } from "../services/contact.service.js";
 
 export async function register(request, response, next) {
   try { response.status(201).json({ success: true, data: await registerCustomer(request.body) }); }
@@ -74,5 +75,15 @@ export async function makeAddressDefault(request, response, next) {
 
 export async function removeAddress(request, response, next) {
   try { response.json({ success: true, data: { user: await removeCustomerAddress(request.auth.userId, request.params.id) } }); }
+  catch (error) { next(error); }
+}
+
+export async function listSupportMessages(request, response, next) {
+  try { response.json({ success: true, data: await getCustomerSupportMessages(request.auth.userId) }); }
+  catch (error) { next(error); }
+}
+
+export async function markSupportMessagesRead(request, response, next) {
+  try { response.json({ success: true, data: await readCustomerSupportMessages(request.auth.userId) }); }
   catch (error) { next(error); }
 }

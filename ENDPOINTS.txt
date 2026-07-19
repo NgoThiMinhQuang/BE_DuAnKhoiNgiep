@@ -68,9 +68,12 @@ Body gợi ý:
 [USER] POST   /api/customers/me/checkout/quote               Tính tiền trước khi đặt
 [USER] GET    /api/customers/me/orders                       Danh sách đơn của tôi
 [USER] POST   /api/customers/me/orders                       Tạo đơn hàng
+[USER] GET    /api/customers/me/orders/:id/payment           Xem QR và trạng thái thanh toán SePay
 [USER] PATCH  /api/customers/me/orders/:id/cancel            Hủy đơn chờ xác nhận
 [USER] GET    /api/customers/me/orders/:id/reviews           Xem đánh giá của đơn
 [USER] POST   /api/customers/me/orders/:id/reviews           Đánh giá sản phẩm trong đơn
+
+[PUBLIC] POST /api/payments/sepay/webhook                    Nhận webhook HMAC-SHA256 từ SePay
 
 
 4. QUẢN TRỊ

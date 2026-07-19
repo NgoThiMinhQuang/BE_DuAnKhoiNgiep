@@ -11,6 +11,7 @@ import {
   addMyCartItem, addMyWishlistItem, removeMyCartItem, removeMyWishlistItem,
   showMyCart, showMyWishlist, updateMyCartItem,
 } from "../controllers/commerce.controller.js";
+import { showMyOrderPayment } from "../controllers/payment.controller.js";
 
 export const authRouter = Router();
 export const customerRouter = Router();
@@ -39,6 +40,7 @@ customerRouter.delete("/me/wishlist/items/:productId", removeMyWishlistItem);
 customerRouter.get("/me/orders", listMyOrders);
 customerRouter.post("/me/checkout/quote", quoteMyCheckout);
 customerRouter.post("/me/orders", createMyOrder);
+customerRouter.get("/me/orders/:id/payment", showMyOrderPayment);
 customerRouter.patch("/me/orders/:id/cancel", cancelMyOrder);
 customerRouter.get("/me/orders/:id/reviews", listMyOrderReviews);
 customerRouter.post("/me/orders/:id/reviews", reviewMyOrder);

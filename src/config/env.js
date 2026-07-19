@@ -24,6 +24,10 @@ export const env = Object.freeze({
   authSecret: process.env.AUTH_SECRET ?? "rubeanora-development-secret-change-me",
   frontendUrl: process.env.FRONTEND_URL ?? "http://localhost:5173",
   googleClientId: process.env.GOOGLE_CLIENT_ID ?? "",
+  resend: {
+    apiKey: process.env.RESEND_API_KEY ?? "",
+    from: process.env.RESEND_FROM ?? "Rubeanora <no-reply@mail.gnaryx.online>",
+  },
   sepay: {
     webhookSecret: process.env.SEPAY_WEBHOOK_SECRET ?? "",
     bankCode: process.env.SEPAY_BANK_CODE ?? "",

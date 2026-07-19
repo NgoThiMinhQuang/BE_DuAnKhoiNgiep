@@ -40,3 +40,21 @@ test("API liên hệ kiểm tra email và nội dung", async () => {
 
   assert.equal(response.body.success, false);
 });
+
+test("API quên mật khẩu kiểm tra định dạng email", async () => {
+  const response = await request(app)
+    .post("/api/auth/forgot-password")
+    .send({ email: "email-sai" })
+    .expect(400);
+
+  assert.equal(response.body.success, false);
+});
+
+test("API đặt lại mật khẩu yêu cầu token hợp lệ", async () => {
+  const response = await request(app)
+    .post("/api/auth/reset-password")
+    .send({ token: "", newPassword: "matkhau-moi" })
+    .expect(400);
+
+  assert.equal(response.body.success, false);
+});

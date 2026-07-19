@@ -210,6 +210,11 @@ export async function updateAdminOrderInTransaction(orderId, changes) {
         UPDATE phieu_xuat SET trang_thai='DA_HUY'
         WHERE don_hang_id=? AND loai_xuat='BAN_HANG' AND trang_thai<>'DA_HUY'
       `, [order.id]);
+      await connection.execute(`
+        UPDATE giao_dich_thanh_toan
+        SET trang_thai='DA_HUY'
+        WHERE don_hang_id=? AND trang_thai='CHO_THANH_TOAN'
+      `, [order.id]);
       if (order.khuyen_mai_id) {
         await connection.execute(`
           UPDATE khuyen_mai

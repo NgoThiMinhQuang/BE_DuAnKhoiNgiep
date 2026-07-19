@@ -49,10 +49,15 @@ Lệnh này ghi nhận migration đã chạy trong bảng `schema_migrations`; m
 - `/api/home`, `/api/products`, `/api/news`: trang chủ, sản phẩm và bài viết công khai.
 - `/api/auth`: đăng ký, đăng nhập, Google và đặt lại mật khẩu.
 - `/api/customers/me`: hồ sơ, địa chỉ, giỏ hàng, yêu thích, đặt/hủy đơn và đánh giá.
+- `/api/payments/sepay/webhook`: nhận kết quả chuyển khoản ngân hàng và tự động xác nhận đơn hàng.
 - `POST /api/contact`: gửi thông tin liên hệ.
 - `/api/admin`: dashboard, đơn hàng, người dùng, đánh giá, liên hệ, cấu hình cửa hàng, sản phẩm, danh mục, khuyến mãi, bài viết, nhà cung cấp và nhập/xuất kho.
 
 Tất cả API `/api/customers/me` cần header `Authorization: Bearer <token>`. API `/api/admin` còn yêu cầu tài khoản có vai trò `ADMIN` và trạng thái `HOAT_DONG`.
+
+## Thanh toán chuyển khoản tự động bằng SePay
+
+Chạy migration `CSDL/migrations/0001_add_sepay_payments.sql`, cấu hình các biến `SEPAY_*` trên Railway và làm theo hướng dẫn trong `SEPAY_SETUP.md`. Secret webhook chỉ được lưu trong Railway hoặc `.env` cục bộ, không đưa vào GitHub.
 
 ## Cấu trúc thư mục
 

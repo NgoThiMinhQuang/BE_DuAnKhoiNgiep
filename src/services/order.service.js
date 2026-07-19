@@ -3,6 +3,7 @@ import {
   findReviewsByOrder, insertOrderReviews,
   createOrderInTransaction, findCheckoutContext,
 } from "../repositories/order.repository.js";
+import { createSePayPaymentCode } from "./payment.service.js";
 
 const statusMap = {
   CHO_XAC_NHAN: "CHO_XAC_NHAN", DA_XAC_NHAN: "DA_XAC_NHAN", DANG_CHUAN_BI: "DANG_DONG_GOI",
@@ -10,7 +11,7 @@ const statusMap = {
 };
 const badRequest = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
 
-const paymentMethods = new Set(["COD", "CHUYEN_KHOAN", "MOMO", "VNPAY"]);
+const paymentMethods = new Set(["COD", "CHUYEN_KHOAN"]);
 
 function normalizeProductIds(values) {
   if (!Array.isArray(values)) throw badRequest("Danh sách sản phẩm không hợp lệ");
@@ -85,11 +86,16 @@ export async function createCustomerOrder(userId, input) {
   if (!input.addressId && (!input.recipientName?.trim() || !input.phone?.trim() || !input.shippingAddress?.trim())) {
     throw badRequest("Vui lòng nhập đầy đủ thông tin giao hàng");
   }
+  const paymentCode = input.paymentMethod === "CHUYEN_KHOAN" ? createSePayPaymentCode() : null;
   const result = await createOrderInTransaction(
-    userId, productIds, input,
+    userId, productIds, { ...input, paymentCode },
     (context) => calculateCheckout(productIds, input.promotionCode, context),
   );
-  return { id: String(result.id), orderCode: result.orderCode };
+  return {
+    id: String(result.id),
+    orderCode: result.orderCode,
+    paymentRequired: input.paymentMethod === "CHUYEN_KHOAN",
+  };
 }
 
 export async function getCustomerOrders(userId) {
@@ -118,7 +124,7 @@ export async function getCustomerOrders(userId) {
 
 export async function cancelCustomerOrder(userId, orderId, reason) {
   if (!await cancelUserOrder(userId, orderId, reason?.trim() || "Người dùng yêu cầu hủy")) {
-    throw badRequest("Chỉ có thể hủy đơn đang chờ xác nhận", 409);
+    throw badRequest("Chỉ có thể hủy đơn chưa thanh toán đang chờ xác nhận", 409);
   }
 }
 

@@ -23,7 +23,9 @@ export async function cancelUserOrder(userId, orderId, reason) {
     const [orders] = await connection.execute(`
       SELECT id, khuyen_mai_id
       FROM don_hang
-      WHERE id=? AND nguoi_dung_id=? AND trang_thai_don_hang='CHO_XAC_NHAN'
+      WHERE id=? AND nguoi_dung_id=?
+        AND trang_thai_don_hang='CHO_XAC_NHAN'
+        AND trang_thai_thanh_toan='CHUA_THANH_TOAN'
       FOR UPDATE
     `, [orderId, userId]);
     const order = orders[0];
@@ -44,6 +46,12 @@ export async function cancelUserOrder(userId, orderId, reason) {
       SET trang_thai_don_hang='DA_HUY', ly_do_huy=?
       WHERE id=?
     `, [reason, order.id]);
+
+    await connection.execute(`
+      UPDATE giao_dich_thanh_toan
+      SET trang_thai='DA_HUY'
+      WHERE don_hang_id=? AND trang_thai='CHO_THANH_TOAN'
+    `, [order.id]);
 
     for (const item of items) {
       await connection.execute(
@@ -187,6 +195,13 @@ export async function createOrderInTransaction(userId, productIds, input, calcul
       summary.subtotal, summary.discountAmount, summary.shippingFee, summary.totalPayment,
       input.paymentMethod, input.customerNote || null,
     ]);
+    if (input.paymentMethod === "CHUYEN_KHOAN") {
+      await connection.execute(`
+        INSERT INTO giao_dich_thanh_toan (
+          don_hang_id, nha_cung_cap, ma_thanh_toan, so_tien, trang_thai
+        ) VALUES (?, 'SEPAY', ?, ?, 'CHO_THANH_TOAN')
+      `, [orderResult.insertId, input.paymentCode, summary.totalPayment]);
+    }
     for (const item of items) {
       await connection.execute(`
         INSERT INTO chi_tiet_don_hang (

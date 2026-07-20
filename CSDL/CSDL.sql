@@ -1,5 +1,5 @@
 
-CREATE DATABASE rubeanora_store
+CREATE DATABASE IF NOT EXISTS rubeanora_store
     CHARACTER SET utf8mb4
     COLLATE utf8mb4_unicode_ci;
 
@@ -40,7 +40,6 @@ CREATE TABLE cau_hinh_cua_hang (
 
     PRIMARY KEY (id)
 ) ENGINE=InnoDB;
-
 -- ================================================================
 -- 2. NGUOI DUNG
 -- ================================================================
@@ -1150,26 +1149,3 @@ CREATE TABLE lien_he (
         REFERENCES nguoi_dung(id)
         ON DELETE SET NULL
 ) ENGINE=InnoDB;
-
--- ================================================================
--- KIEM TRA KET QUA
--- ================================================================
-
-USE rubeanora_store;
-
-UPDATE nguoi_dung
-SET ho_ten = CONVERT(0x44757920546875E1BAAD6E USING utf8mb4)
-WHERE email = 'thuan@gmail.com';
-
-UPDATE nguoi_dung
-SET ho_ten = CONVERT(0x4E67E1BB8D63204D6169 USING utf8mb4)
-WHERE email = 'admin@gmail.com';
-
-UPDATE nguoi_dung
-SET ho_ten = CONVERT(0x4CC3AA2056C4836E205175616E67 USING utf8mb4)
-WHERE email = 'quang@gmail.com';
-
-
-SELECT DATABASE();
-
-SHOW TABLES;

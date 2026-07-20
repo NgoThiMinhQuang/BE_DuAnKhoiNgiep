@@ -4,7 +4,8 @@ const productSelect = `
   SELECT sp.id, sp.ma_san_pham, sp.ma_sku, sp.ten_san_pham, sp.duong_dan,
     sp.loai_san_pham, sp.mo_ta_ngan, sp.mo_ta_chi_tiet, sp.thanh_phan,
     sp.cong_dung, sp.huong_dan_su_dung, sp.quy_cach, sp.xuat_xu,
-    sp.anh_chinh_url, sp.gia_niem_yet, sp.gia_ban, sp.so_luong_ton,
+    sp.anh_chinh_url, sp.gia_niem_yet, sp.gia_ban,
+    (sp.so_luong_ton-sp.so_luong_giu_cho) AS so_luong_ton,
     dm.ten_danh_muc, dm.duong_dan AS danh_muc_duong_dan
 `;
 
@@ -26,7 +27,7 @@ export async function upsertCartItem(userId, productId, quantity) {
   try {
     await connection.beginTransaction();
     const [products] = await connection.execute(
-      "SELECT id, so_luong_ton FROM san_pham WHERE id=? AND trang_thai='DANG_BAN' FOR UPDATE",
+      "SELECT id, (so_luong_ton-so_luong_giu_cho) AS so_luong_ton FROM san_pham WHERE id=? AND trang_thai='DANG_BAN' FOR UPDATE",
       [productId],
     );
     if (!products[0]) {
@@ -65,7 +66,7 @@ export async function setCartItemQuantity(userId, productId, quantity) {
     INNER JOIN san_pham sp ON sp.id=ctgh.san_pham_id
     SET ctgh.so_luong=?, ctgh.ngay_cap_nhat=NOW()
     WHERE gh.nguoi_dung_id=? AND ctgh.san_pham_id=?
-      AND sp.trang_thai='DANG_BAN' AND sp.so_luong_ton>=?
+      AND sp.trang_thai='DANG_BAN' AND (sp.so_luong_ton-sp.so_luong_giu_cho)>=?
   `, [quantity, userId, productId, quantity]);
   return result.affectedRows > 0;
 }

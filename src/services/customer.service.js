@@ -21,6 +21,12 @@ import { env } from "../config/env.js";
 import { sendPasswordResetEmail } from "./mail.service.js";
 
 const badRequest = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
+const avatarUrl = (value) => {
+  if (!value) return null;
+  const url = String(value).trim();
+  if (url.length > 500 || /^data:/i.test(url)) throw badRequest("Ảnh đại diện phải là URL, không được gửi Base64");
+  return url;
+};
 const googleClient = new OAuth2Client();
 const hashResetToken = (token) => createHash("sha256").update(token).digest("hex");
 
@@ -76,17 +82,6 @@ export async function loginCustomer(input) {
   const row = await findUserByEmail(email);
   if (!row || !verifyPassword(input.password, row.mat_khau_hash)) throw badRequest("Email hoặc mật khẩu không chính xác", 401);
   if (row.trang_thai !== "HOAT_DONG") throw badRequest("Tài khoản đã bị khóa", 403);
-  return { token: createAccessToken(row.id), user: await mapUser(row) };
-}
-
-export async function socialLoginCustomer(provider) {
-  if (!['google', 'facebook'].includes(provider)) throw badRequest("Nhà cung cấp đăng nhập không hợp lệ");
-  const email = `${provider}.user@rubeanora.vn`;
-  let row = await findUserByEmail(email);
-  if (!row) {
-    const id = await insertUser({ fullName: `Khách hàng ${provider}`, email, phone: "", passwordHash: hashPassword(randomUUID()) });
-    row = await findUserById(id);
-  }
   return { token: createAccessToken(row.id), user: await mapUser(row) };
 }
 
@@ -151,10 +146,12 @@ export async function getCustomer(userId) {
 
 export async function updateCustomer(userId, input) {
   if (!input.firstName?.trim() || !input.lastName?.trim()) throw badRequest("Vui lòng nhập đầy đủ họ tên");
+  const email = String(input.email ?? "").trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw badRequest("Email không hợp lệ");
   try {
     await updateUserProfile(userId, {
       fullName: `${input.lastName.trim()} ${input.firstName.trim()}`,
-      email: input.email.trim().toLowerCase(), phone: input.phone?.trim() ?? "", avatar: input.avatar,
+      email, phone: input.phone?.trim() ?? "", avatar: avatarUrl(input.avatar),
     });
   } catch (error) { translateDuplicate(error); }
   return getCustomer(userId);

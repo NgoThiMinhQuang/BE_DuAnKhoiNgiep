@@ -58,7 +58,7 @@ export async function handleSePayTransaction({
     }
 
     const [payments] = await connection.execute(`
-      SELECT gdt.id, gdt.don_hang_id, gdt.so_tien, gdt.trang_thai,
+      SELECT gdt.id, gdt.don_hang_id, gdt.so_tien, gdt.trang_thai, gdt.het_han_luc,
         dh.phuong_thuc_thanh_toan, dh.trang_thai_thanh_toan, dh.trang_thai_don_hang
       FROM giao_dich_thanh_toan gdt
       INNER JOIN don_hang dh ON dh.id=gdt.don_hang_id
@@ -88,6 +88,7 @@ export async function handleSePayTransaction({
       || payment.trang_thai_thanh_toan !== "CHUA_THANH_TOAN"
       || payment.trang_thai !== "CHO_THANH_TOAN"
       || payment.trang_thai_don_hang === "DA_HUY"
+      || (payment.het_han_luc && new Date(payment.het_han_luc).getTime() <= Date.now())
     ) {
       await updateWebhookLog(connection, transactionId, "BO_QUA", "Đơn hàng không còn chờ thanh toán", payment.don_hang_id);
       await connection.commit();
@@ -108,6 +109,12 @@ export async function handleSePayTransaction({
       SET trang_thai_thanh_toan='DA_THANH_TOAN'
       WHERE id=? AND trang_thai_thanh_toan='CHUA_THANH_TOAN'
     `, [payment.don_hang_id]);
+    await connection.execute(`
+      INSERT INTO lich_su_trang_thai_thanh_toan (
+        don_hang_id, nguoi_thuc_hien_id, trang_thai_cu, trang_thai_moi,
+        nguon, ly_do, du_lieu_doi_chieu
+      ) VALUES (?, NULL, 'CHUA_THANH_TOAN', 'DA_THANH_TOAN', 'SEPAY_WEBHOOK', ?, ?)
+    `, [payment.don_hang_id, "SePay xác nhận giao dịch", JSON.stringify({ transactionId, transactionDate })]);
     await updateWebhookLog(connection, transactionId, "DA_XU_LY", null, payment.don_hang_id);
     await connection.commit();
   } catch (error) {

@@ -13,7 +13,7 @@ export async function saveUploadedImage(userId, input) {
     throw httpError("Tệp ảnh không có dữ liệu", 400);
   }
   if (input.data.length > maximumImageSize) {
-    throw httpError("Ảnh bài viết không được vượt quá 5MB", 413);
+    throw httpError("Ảnh không được vượt quá 5MB", 413);
   }
 
   const fileName = String(input.fileName || "article-image")

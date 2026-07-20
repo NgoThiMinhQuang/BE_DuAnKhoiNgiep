@@ -1,10 +1,11 @@
-import { Router } from "express";
+import express, { Router } from "express";
 
 import {
   addAddress, changePassword, login, makeAddressDefault, register,
-  removeAddress, showMe, socialLogin, updateMe,
+  removeAddress, showMe, updateMe,
   forgotPassword, googleLogin, resetPassword,
   listSupportMessages, markSupportMessagesRead,
+  askChatbot, showChatbotHistory,
 } from "../controllers/customer.controller.js";
 import { authenticate } from "../middleware/authenticate.js";
 import { cancelMyOrder, createMyOrder, listMyOrderReviews, listMyOrders, quoteMyCheckout, reviewMyOrder } from "../controllers/order.controller.js";
@@ -13,18 +14,23 @@ import {
   showMyCart, showMyWishlist, updateMyCartItem,
 } from "../controllers/commerce.controller.js";
 import { showMyOrderPayment } from "../controllers/payment.controller.js";
+import { uploadImage } from "../controllers/media.controller.js";
 
 export const authRouter = Router();
 export const customerRouter = Router();
 
 authRouter.post("/register", register);
 authRouter.post("/login", login);
-authRouter.post("/social", socialLogin);
 authRouter.post("/google", googleLogin);
 authRouter.post("/forgot-password", forgotPassword);
 authRouter.post("/reset-password", resetPassword);
 
 customerRouter.use(authenticate);
+customerRouter.post(
+  "/me/uploads/images",
+  express.raw({ type: ["image/jpeg", "image/png", "image/webp"], limit: "500kb" }),
+  uploadImage,
+);
 customerRouter.get("/me", showMe);
 customerRouter.put("/me", updateMe);
 customerRouter.put("/me/password", changePassword);
@@ -47,3 +53,5 @@ customerRouter.get("/me/orders/:id/reviews", listMyOrderReviews);
 customerRouter.post("/me/orders/:id/reviews", reviewMyOrder);
 customerRouter.get("/me/support-messages", listSupportMessages);
 customerRouter.patch("/me/support-messages/read", markSupportMessagesRead);
+customerRouter.post("/me/chatbot", askChatbot);
+customerRouter.get("/me/chatbot/history", showChatbotHistory);

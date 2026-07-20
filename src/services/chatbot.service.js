@@ -38,10 +38,63 @@ const faqEntries = [
   },
 ];
 
+import { findChatHistory, getChatContext, getPublicChatSettings, saveChatExchange, transferChatToSeller } from "../repositories/chatbot.repository.js";
+
 export function findChatbotAnswer(message) {
   const normalizedMessage = normalize(message);
   const match = faqEntries.find((entry) => entry.keywords.some((phrase) => (
     phrase.every((keyword) => normalizedMessage.includes(keyword))
   )));
   return match?.answer ?? "Xin lỗi, tôi chưa có câu trả lời phù hợp cho nội dung này. Bạn có thể chọn một câu hỏi gợi ý hoặc bấm “Chat với người bán” nếu muốn liên hệ trực tiếp với nhân viên. Tin nhắn này chưa được gửi cho người bán.";
+}
+
+export async function answerPublicChatbot(message) {
+  const normalized = normalize(message);
+  const settings = await getPublicChatSettings();
+  if (has(normalized, ["phi ship", "phi van chuyen", "mien phi giao hang"])) return `Phí vận chuyển hiện tại là ${Number(settings.phi_van_chuyen || 0).toLocaleString("vi-VN")}đ. Đơn từ ${Number(settings.nguong_mien_phi_van_chuyen || 0).toLocaleString("vi-VN")}đ được miễn phí vận chuyển.`;
+  if (has(normalized, ["hotline", "lien he", "gio lam viec"])) return `Hotline: ${settings.hotline || "đang cập nhật"}. Email: ${settings.email_ho_tro || settings.email || "đang cập nhật"}. Giờ làm việc: ${settings.gio_lam_viec || "đang cập nhật"}.`;
+  return findChatbotAnswer(message);
+}
+
+const has = (text, words) => words.some((word) => text.includes(word));
+
+export async function answerCustomerChatbot(userId, message) {
+  const normalized = normalize(message);
+  const context = await getChatContext(userId);
+  let intent = "UNKNOWN";
+  let answer;
+  let products = [];
+  if (has(normalized, ["dong y chuyen", "chuyen nguoi ban", "gap nhan vien"])) {
+    intent = "TRANSFER_TO_SELLER";
+    await transferChatToSeller(userId);
+    answer = "Mình đã chuyển toàn bộ ngữ cảnh cho người bán. Thời gian phản hồi dự kiến trong giờ làm việc là 15–30 phút.";
+  } else if (has(normalized, ["phi ship", "phi van chuyen", "mien phi giao hang"])) {
+    intent = "SHIPPING_FEE";
+    answer = `Phí vận chuyển hiện tại là ${Number(context.settings.phi_van_chuyen || 0).toLocaleString("vi-VN")}đ. Đơn từ ${Number(context.settings.nguong_mien_phi_van_chuyen || 0).toLocaleString("vi-VN")}đ được miễn phí vận chuyển.`;
+  } else if (has(normalized, ["bao lau", "thoi gian giao", "khi nao nhan"])) {
+    intent = "DELIVERY_TIME"; answer = context.faq.DELIVERY_TIME;
+  } else if (has(normalized, ["doi tra", "tra hang", "doi hang"])) {
+    intent = "RETURN_POLICY"; answer = context.faq.RETURN_POLICY;
+  } else if (has(normalized, ["hotline", "lien he", "gio lam viec"])) {
+    intent = "CONTACT_INFO"; answer = `Hotline: ${context.settings.hotline || "đang cập nhật"}. Email: ${context.settings.email_ho_tro || context.settings.email || "đang cập nhật"}. Giờ làm việc: ${context.settings.gio_lam_viec || "đang cập nhật"}.`;
+  } else if (has(normalized, ["don ", "don hang", "ma van don", "thanh toan"])) {
+    intent = "ORDER_STATUS";
+    const code = normalized.match(/(?:rbb|[a-z0-9]{2,8})[- ][a-z0-9-]+/i)?.[0]?.replaceAll(" ", "-").toUpperCase();
+    const order = code ? context.orders.find((item) => item.ma_don_hang.toUpperCase() === code) : context.orders[0];
+    answer = order ? `Đơn ${order.ma_don_hang}: trạng thái ${order.trang_thai_don_hang}, thanh toán ${order.trang_thai_thanh_toan}${order.ma_van_don ? `, mã vận đơn ${order.ma_van_don}` : ", chưa có mã vận đơn"}.` : "Tài khoản của bạn chưa có đơn hàng phù hợp.";
+  } else if (has(normalized, ["tu van", "san pham", "da kho", "da dau", "mun", "duong am"])) {
+    intent = "PRODUCT_ADVICE";
+    const budget = Number(normalized.match(/(\d+)\s*(k|000)/)?.[1] || 0) * 1000;
+    const candidates = context.products.filter((item) => !budget || Number(item.gia_ban) <= budget).slice(0, 3);
+    products = candidates.map((item) => ({ id: String(item.id), name: item.ten_san_pham, slug: item.duong_dan, price: Number(item.gia_ban), stock: Number(item.stock) }));
+    answer = products.length ? "Dựa trên nhu cầu và mức giá bạn cung cấp, đây là các sản phẩm còn hàng để bạn tham khảo. Đây không phải chẩn đoán da hoặc cam kết điều trị." : "Bạn đang quan tâm sản phẩm nào? Hãy cho tôi thêm loại da, nhu cầu chính, mức giá mong muốn và thành phần từng dị ứng.";
+  } else {
+    answer = "Mình chưa xử lý chắc chắn nội dung này. Bạn có muốn chuyển toàn bộ cuộc trò chuyện cho người bán không? Chỉ khi bạn đồng ý, hệ thống mới tạo yêu cầu hỗ trợ.";
+  }
+  await saveChatExchange(userId, message, answer, intent);
+  return { answer, intent, products, canTransfer: intent === "UNKNOWN" };
+}
+
+export async function getCustomerChatHistory(userId) {
+  return (await findChatHistory(userId)).map((item) => ({ id: String(item.id), content: item.noi_dung, intent: item.intent, sentAt: item.ngay_gui, direction: item.loai_nguoi_gui === "KHACH_HANG" ? "CUSTOMER" : "BOT" }));
 }

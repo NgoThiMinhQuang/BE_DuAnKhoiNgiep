@@ -32,6 +32,15 @@ test("API quản trị yêu cầu đăng nhập", async () => {
   assert.equal(response.body.success, false);
 });
 
+test("API social login giả không còn tồn tại", async () => {
+  const response = await request(app)
+    .post("/api/auth/social")
+    .send({ provider: "google" })
+    .expect(404);
+
+  assert.equal(response.body.success, false);
+});
+
 test("API liên hệ kiểm tra email và nội dung", async () => {
   const response = await request(app)
     .post("/api/contact")

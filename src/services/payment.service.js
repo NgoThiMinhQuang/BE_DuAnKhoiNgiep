@@ -48,6 +48,7 @@ function mapPayment(row) {
     paymentStatus: row.trang_thai_thanh_toan,
     transactionStatus: row.trang_thai,
     paidAt: row.ngay_thanh_toan ?? null,
+    expiresAt: row.het_han_luc ?? null,
     bank: {
       code: env.sepay.bankCode,
       name: env.sepay.bankName,

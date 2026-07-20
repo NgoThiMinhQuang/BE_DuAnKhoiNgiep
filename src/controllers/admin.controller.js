@@ -50,7 +50,7 @@ function action(service, { status = 200, input = "body", admin = false } = {}) {
 export const showDashboard = action(getAdminDashboard, { input: null });
 export const listOrders = action(getAdminOrders, { input: "query" });
 export const showOrder = action(getAdminOrder, { input: null });
-export const updateOrder = action(changeAdminOrder);
+export const updateOrder = action(changeAdminOrder, { admin: true });
 export const listUsers = action(getAdminUsers, { input: "query" });
 export const updateUser = action(changeAdminUser, { admin: true });
 export const listReviews = action(getAdminReviews, { input: "query" });

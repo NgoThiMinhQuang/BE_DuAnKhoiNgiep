@@ -122,7 +122,7 @@ export async function setDefaultAddress(userId, addressId) {
   try {
     await connection.beginTransaction();
     const [target] = await connection.execute("SELECT id FROM dia_chi_nguoi_dung WHERE id=? AND nguoi_dung_id=?", [addressId, userId]);
-    if (!target.length) return false;
+    if (!target.length) { await connection.rollback(); return false; }
     await connection.execute("UPDATE dia_chi_nguoi_dung SET la_mac_dinh=0 WHERE nguoi_dung_id=?", [userId]);
     await connection.execute("UPDATE dia_chi_nguoi_dung SET la_mac_dinh=1 WHERE id=? AND nguoi_dung_id=?", [addressId, userId]);
     await connection.commit();
@@ -140,7 +140,7 @@ export async function deleteAddress(userId, addressId) {
   try {
     await connection.beginTransaction();
     const [rows] = await connection.execute("SELECT la_mac_dinh FROM dia_chi_nguoi_dung WHERE id=? AND nguoi_dung_id=?", [addressId, userId]);
-    if (!rows.length) return false;
+    if (!rows.length) { await connection.rollback(); return false; }
     await connection.execute("DELETE FROM dia_chi_nguoi_dung WHERE id=? AND nguoi_dung_id=?", [addressId, userId]);
     if (rows[0].la_mac_dinh) {
       await connection.execute(`

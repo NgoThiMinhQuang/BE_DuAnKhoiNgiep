@@ -111,6 +111,8 @@ export async function findDashboardData() {
       SELECT
         (SELECT COUNT(*) FROM don_hang) AS total_orders,
         (SELECT COUNT(*) FROM don_hang WHERE trang_thai_don_hang='CHO_XAC_NHAN') AS pending_orders,
+        (SELECT COUNT(*) FROM don_hang WHERE trang_thai_don_hang IN ('DA_XAC_NHAN','DANG_CHUAN_BI','DANG_GIAO')) AS processing_orders,
+        (SELECT COALESCE(SUM(tong_thanh_toan), 0) FROM don_hang WHERE trang_thai_don_hang='DA_GIAO') AS delivered_revenue,
         (SELECT COALESCE(SUM(tong_thanh_toan), 0) FROM don_hang
           WHERE trang_thai_don_hang='DA_GIAO'
             AND YEAR(ngay_tao)=YEAR(CURDATE()) AND MONTH(ngay_tao)=MONTH(CURDATE())) AS monthly_revenue,
@@ -138,11 +140,15 @@ export async function findDashboardData() {
   return { summary: summary[0], recentOrders, lowStock, periods: Object.fromEntries(periodEntries) };
 }
 
-export async function findAdminOrders({ status, paymentStatus, search, limit, offset }) {
+export async function findAdminOrders({ status, paymentStatus, paymentMethod, period, sort, search, limit, offset }) {
   const conditions = ["1=1"];
   const values = [];
   if (status) { conditions.push("dh.trang_thai_don_hang=?"); values.push(status); }
   if (paymentStatus) { conditions.push("dh.trang_thai_thanh_toan=?"); values.push(paymentStatus); }
+  if (paymentMethod) { conditions.push("dh.phuong_thuc_thanh_toan=?"); values.push(paymentMethod); }
+  if (period === "today") conditions.push("DATE(dh.ngay_tao)=CURDATE()");
+  if (period === "7days") conditions.push("dh.ngay_tao>=DATE_SUB(NOW(), INTERVAL 7 DAY)");
+  if (period === "30days") conditions.push("dh.ngay_tao>=DATE_SUB(NOW(), INTERVAL 30 DAY)");
   if (search) {
     conditions.push("(dh.ma_don_hang LIKE ? OR dh.ten_nguoi_nhan LIKE ? OR dh.so_dien_thoai LIKE ?)");
     const pattern = `%${search}%`;
@@ -150,16 +156,22 @@ export async function findAdminOrders({ status, paymentStatus, search, limit, of
   }
   const where = conditions.join(" AND ");
   const [countRows] = await database.execute(`SELECT COUNT(*) AS total FROM don_hang dh WHERE ${where}`, values);
+  const orderBy = sort === "oldest" ? "dh.ngay_tao ASC"
+    : sort === "highest" ? "dh.tong_thanh_toan DESC" : "dh.ngay_tao DESC";
   const [rows] = await database.query(`
     SELECT dh.*, nd.ho_ten AS ten_khach_hang,
+      yht.id AS yeu_cau_hoan_tien_id, yht.trang_thai AS trang_thai_hoan_tien,
+      yht.so_tien AS so_tien_hoan, yht.ly_do AS ly_do_hoan_tien,
+      yht.ghi_chu_admin AS ghi_chu_hoan_tien,
       COUNT(ctdh.id) AS so_dong_san_pham,
       COALESCE(SUM(ctdh.so_luong), 0) AS tong_so_luong
     FROM don_hang dh
     INNER JOIN nguoi_dung nd ON nd.id=dh.nguoi_dung_id
+    LEFT JOIN yeu_cau_hoan_tien yht ON yht.don_hang_id=dh.id
     LEFT JOIN chi_tiet_don_hang ctdh ON ctdh.don_hang_id=dh.id
     WHERE ${where}
-    GROUP BY dh.id, nd.id
-    ORDER BY dh.ngay_tao DESC
+    GROUP BY dh.id, nd.id, yht.id
+    ORDER BY ${orderBy}
     LIMIT ? OFFSET ?
   `, [...values, limit, offset]);
   return { rows, total: Number(countRows[0].total) };
@@ -167,9 +179,13 @@ export async function findAdminOrders({ status, paymentStatus, search, limit, of
 
 export async function findAdminOrderById(orderId) {
   const [orders] = await database.execute(`
-    SELECT dh.*, nd.ho_ten AS ten_khach_hang, nd.email AS email_khach_hang
+    SELECT dh.*, nd.ho_ten AS ten_khach_hang, nd.email AS email_khach_hang,
+      yht.id AS yeu_cau_hoan_tien_id, yht.trang_thai AS trang_thai_hoan_tien,
+      yht.so_tien AS so_tien_hoan, yht.ly_do AS ly_do_hoan_tien,
+      yht.ghi_chu_admin AS ghi_chu_hoan_tien
     FROM don_hang dh
     INNER JOIN nguoi_dung nd ON nd.id=dh.nguoi_dung_id
+    LEFT JOIN yeu_cau_hoan_tien yht ON yht.don_hang_id=dh.id
     WHERE dh.id=? LIMIT 1
   `, [orderId]);
   if (!orders[0]) return null;
@@ -195,14 +211,42 @@ export async function updateAdminOrderInTransaction(orderId, changes) {
     }
 
     const nextStatus = changes.orderStatus ?? order.trang_thai_don_hang;
+    let nextPaymentStatus = order.trang_thai_thanh_toan;
+    const [orderItems] = await connection.execute(`
+      SELECT san_pham_id, so_luong, don_gia, thanh_tien
+      FROM chi_tiet_don_hang
+      WHERE don_hang_id=? AND san_pham_id IS NOT NULL
+      FOR UPDATE
+    `, [order.id]);
     if (nextStatus === "DA_HUY" && order.trang_thai_don_hang !== "DA_HUY") {
-      const [items] = await connection.execute(`
-        SELECT san_pham_id, so_luong FROM chi_tiet_don_hang
-        WHERE don_hang_id=? AND san_pham_id IS NOT NULL FOR UPDATE
-      `, [order.id]);
-      for (const item of items) {
+      if (order.trang_thai_thanh_toan === "DA_THANH_TOAN") {
+        if (changes.refundAction !== "TAO_YEU_CAU") {
+          const error = new Error("Đơn đã thanh toán phải tạo yêu cầu hoàn tiền khi hủy");
+          error.statusCode = 409;
+          throw error;
+        }
+        const [payments] = await connection.execute(
+          "SELECT id FROM giao_dich_thanh_toan WHERE don_hang_id=? LIMIT 1 FOR UPDATE",
+          [order.id],
+        );
+        await connection.execute(`
+          INSERT INTO yeu_cau_hoan_tien (
+            don_hang_id, giao_dich_thanh_toan_id, nguoi_yeu_cau_id,
+            so_tien, ly_do, trang_thai, ghi_chu_admin
+          ) VALUES (?, ?, ?, ?, ?, 'YEU_CAU_HOAN_TIEN', ?)
+        `, [order.id, payments[0]?.id ?? null, changes.adminId, order.tong_thanh_toan,
+          changes.cancelReason, changes.refundAdminNote ?? null]);
+        if (payments[0]) {
+          await connection.execute(
+            "UPDATE giao_dich_thanh_toan SET trang_thai='YEU_CAU_HOAN_TIEN' WHERE id=?",
+            [payments[0].id],
+          );
+        }
+        nextPaymentStatus = "DA_THANH_TOAN";
+      }
+      for (const item of orderItems) {
         await connection.execute(
-          "UPDATE san_pham SET so_luong_ton=so_luong_ton+? WHERE id=?",
+          "UPDATE san_pham SET so_luong_giu_cho=GREATEST(so_luong_giu_cho-?, 0) WHERE id=?",
           [item.so_luong, item.san_pham_id],
         );
       }
@@ -216,12 +260,100 @@ export async function updateAdminOrderInTransaction(orderId, changes) {
         WHERE don_hang_id=? AND trang_thai='CHO_THANH_TOAN'
       `, [order.id]);
       if (order.khuyen_mai_id) {
+        await connection.execute("DELETE FROM lich_su_su_dung_khuyen_mai WHERE don_hang_id=?", [order.id]);
         await connection.execute(`
           UPDATE khuyen_mai
           SET so_luot_da_su_dung=GREATEST(so_luot_da_su_dung-1, 0)
           WHERE id=?
         `, [order.khuyen_mai_id]);
       }
+    }
+
+    if (changes.refundStatus) {
+      const [refunds] = await connection.execute(
+        "SELECT * FROM yeu_cau_hoan_tien WHERE don_hang_id=? FOR UPDATE",
+        [order.id],
+      );
+      if (!refunds[0]) {
+        const error = new Error("Đơn hàng chưa có yêu cầu hoàn tiền");
+        error.statusCode = 409;
+        throw error;
+      }
+      await connection.execute(`
+        UPDATE yeu_cau_hoan_tien SET
+          trang_thai=?, ghi_chu_admin=COALESCE(?, ghi_chu_admin),
+          ngay_bat_dau=CASE WHEN ?='DANG_HOAN_TIEN' THEN COALESCE(ngay_bat_dau, NOW()) ELSE ngay_bat_dau END,
+          ngay_hoan_tien=CASE WHEN ?='DA_HOAN_TIEN' THEN NOW() ELSE ngay_hoan_tien END
+        WHERE id=?
+      `, [changes.refundStatus, changes.refundAdminNote ?? null,
+        changes.refundStatus, changes.refundStatus, refunds[0].id]);
+      if (refunds[0].giao_dich_thanh_toan_id) {
+        await connection.execute(
+          "UPDATE giao_dich_thanh_toan SET trang_thai=? WHERE id=?",
+          [changes.refundStatus, refunds[0].giao_dich_thanh_toan_id],
+        );
+      }
+      nextPaymentStatus = changes.refundStatus === "DA_HOAN_TIEN"
+        ? "DA_HOAN_TIEN"
+        : "DA_THANH_TOAN";
+      if (nextPaymentStatus !== order.trang_thai_thanh_toan) {
+        await connection.execute(`
+          INSERT INTO lich_su_trang_thai_thanh_toan (
+            don_hang_id, nguoi_thuc_hien_id, trang_thai_cu, trang_thai_moi, nguon, ly_do
+          ) VALUES (?, ?, ?, ?, 'HOAN_TIEN', ?)
+        `, [order.id, changes.adminId, order.trang_thai_thanh_toan, nextPaymentStatus,
+          changes.refundAdminNote || "Hoàn tất quy trình hoàn tiền"]);
+      }
+    }
+
+    if (nextStatus === "DA_XAC_NHAN" && order.trang_thai_don_hang === "CHO_XAC_NHAN") {
+      const [exportResult] = await connection.execute(`
+        INSERT INTO phieu_xuat (
+          ma_phieu_xuat, don_hang_id, nguoi_tao_id, loai_xuat,
+          nguoi_nhan, tong_gia_tri, ghi_chu, trang_thai
+        ) VALUES (?, ?, NULL, 'BAN_HANG', ?, ?, ?, 'NHAP_TAM')
+      `, [`PX-${order.ma_don_hang}`, order.id, order.ten_nguoi_nhan, order.tong_tien_hang, `Phiếu xuất nháp cho đơn ${order.ma_don_hang}`]);
+      for (const item of orderItems) {
+        await connection.execute(`
+          INSERT INTO chi_tiet_phieu_xuat (
+            phieu_xuat_id, san_pham_id, so_luong, don_gia_xuat, thanh_tien
+          ) VALUES (?, ?, ?, ?, ?)
+        `, [exportResult.insertId, item.san_pham_id, item.so_luong, item.don_gia, item.thanh_tien]);
+      }
+    }
+
+    if (nextStatus === "DANG_GIAO" && order.trang_thai_don_hang !== "DANG_GIAO") {
+      for (const item of orderItems) {
+        const [stockResult] = await connection.execute(`
+          UPDATE san_pham
+          SET so_luong_ton=so_luong_ton-?, so_luong_giu_cho=so_luong_giu_cho-?
+          WHERE id=? AND so_luong_ton>=? AND so_luong_giu_cho>=?
+        `, [item.so_luong, item.so_luong, item.san_pham_id, item.so_luong, item.so_luong]);
+        if (!stockResult.affectedRows) {
+          const error = new Error("Không đủ tồn kho giữ chỗ để bàn giao đơn hàng");
+          error.statusCode = 409;
+          throw error;
+        }
+      }
+      const [exportUpdate] = await connection.execute(`
+        UPDATE phieu_xuat SET trang_thai='DA_HOAN_THANH', ngay_xuat=NOW()
+        WHERE don_hang_id=? AND loai_xuat='BAN_HANG' AND trang_thai='NHAP_TAM'
+      `, [order.id]);
+      if (!exportUpdate.affectedRows) {
+        const error = new Error("Không tìm thấy phiếu xuất nháp của đơn hàng");
+        error.statusCode = 409;
+        throw error;
+      }
+    }
+
+    if (nextStatus === "DA_GIAO" && order.trang_thai_don_hang !== "DA_GIAO"
+      && order.phuong_thuc_thanh_toan === "COD" && order.trang_thai_thanh_toan === "CHUA_THANH_TOAN") {
+      nextPaymentStatus = "DA_THANH_TOAN";
+      await connection.execute(`
+        INSERT INTO lich_su_trang_thai_thanh_toan (
+          don_hang_id, nguoi_thuc_hien_id, trang_thai_cu, trang_thai_moi, nguon, ly_do
+        ) VALUES (?, ?, 'CHUA_THANH_TOAN', 'DA_THANH_TOAN', 'COD_GIAO_HANG', ?)
+      `, [order.id, changes.adminId, "Đơn COD đã giao thành công"]);
     }
 
     await connection.execute(`
@@ -231,7 +363,7 @@ export async function updateAdminOrderInTransaction(orderId, changes) {
       WHERE id=?
     `, [
       nextStatus,
-      changes.paymentStatus ?? order.trang_thai_thanh_toan,
+      nextPaymentStatus,
       changes.adminNote ?? order.ghi_chu_admin,
       changes.cancelReason ?? order.ly_do_huy,
       changes.shippingProvider ?? order.don_vi_van_chuyen,
@@ -275,13 +407,41 @@ export async function findAdminUsers({ role, status, search, limit, offset }) {
   return { rows, total: Number(countRows[0].total) };
 }
 
-export async function updateAdminUser(userId, changes) {
-  const [result] = await database.execute(`
-    UPDATE nguoi_dung
-    SET vai_tro=COALESCE(?, vai_tro), trang_thai=COALESCE(?, trang_thai)
-    WHERE id=?
-  `, [changes.role ?? null, changes.status ?? null, userId]);
-  return result.affectedRows > 0;
+export async function updateAdminUser(adminId, userId, changes) {
+  const connection = await database.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [rows] = await connection.execute("SELECT * FROM nguoi_dung WHERE id=? FOR UPDATE", [userId]);
+    const current = rows[0];
+    if (!current) { await connection.rollback(); return false; }
+    const nextRole = changes.role ?? current.vai_tro;
+    const nextStatus = changes.status ?? current.trang_thai;
+    const removesActiveAdmin = current.vai_tro === "ADMIN" && current.trang_thai === "HOAT_DONG"
+      && (nextRole !== "ADMIN" || nextStatus !== "HOAT_DONG");
+    if (removesActiveAdmin) {
+      const [admins] = await connection.execute(
+        "SELECT id FROM nguoi_dung WHERE vai_tro='ADMIN' AND trang_thai='HOAT_DONG' FOR UPDATE",
+      );
+      if (admins.length <= 1) {
+        const error = new Error("Không thể khóa hoặc hạ quyền quản trị viên cuối cùng");
+        error.statusCode = 409;
+        throw error;
+      }
+    }
+    await connection.execute("UPDATE nguoi_dung SET vai_tro=?, trang_thai=? WHERE id=?", [nextRole, nextStatus, userId]);
+    if (nextRole !== current.vai_tro || nextStatus !== current.trang_thai) {
+      await connection.execute(`
+        INSERT INTO lich_su_quyen_nguoi_dung (
+          nguoi_dung_id, nguoi_thuc_hien_id, vai_tro_cu, vai_tro_moi, trang_thai_cu, trang_thai_moi
+        ) VALUES (?, ?, ?, ?, ?, ?)
+      `, [userId, adminId, current.vai_tro, nextRole, current.trang_thai, nextStatus]);
+    }
+    await connection.commit();
+    return true;
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally { connection.release(); }
 }
 
 export async function findAdminReviews({ status, limit, offset }) {
@@ -347,7 +507,9 @@ export async function updateAdminSettings(changes) {
     UPDATE cau_hinh_cua_hang SET
       ten_cua_hang=?, logo_url=?, mo_ta=?, hotline=?, email=?, dia_chi=?,
       gio_lam_viec=?, phi_van_chuyen=?, nguong_mien_phi_van_chuyen=?,
-      facebook_url=?, instagram_url=?, tiktok_url=?
+      facebook_url=?, instagram_url=?, tiktok_url=?, ten_phap_ly=?, email_ho_tro=?,
+      google_maps_url=?, tien_to_don_hang=?, bat_cod=?, bat_chuyen_khoan=?, youtube_url=?,
+      email_thong_bao=?, nguong_canh_bao_kho=?, gui_email_xac_nhan=?, che_do_bao_tri=?
     WHERE id=?
   `, [
     changes.storeName ?? rows.ten_cua_hang,
@@ -362,6 +524,17 @@ export async function updateAdminSettings(changes) {
     changes.facebookUrl ?? rows.facebook_url,
     changes.instagramUrl ?? rows.instagram_url,
     changes.tiktokUrl ?? rows.tiktok_url,
+    changes.legalName ?? rows.ten_phap_ly,
+    changes.supportEmail ?? rows.email_ho_tro,
+    changes.mapEmbedUrl ?? rows.google_maps_url,
+    changes.orderPrefix ?? rows.tien_to_don_hang,
+    changes.codEnabled == null ? rows.bat_cod : Number(Boolean(changes.codEnabled)),
+    changes.bankTransferEnabled == null ? rows.bat_chuyen_khoan : Number(Boolean(changes.bankTransferEnabled)),
+    changes.youtubeUrl ?? rows.youtube_url,
+    changes.notificationEmail ?? rows.email_thong_bao,
+    changes.lowStockThreshold ?? rows.nguong_canh_bao_kho,
+    changes.sendOrderConfirmation == null ? rows.gui_email_xac_nhan : Number(Boolean(changes.sendOrderConfirmation)),
+    changes.maintenanceMode == null ? rows.che_do_bao_tri : Number(Boolean(changes.maintenanceMode)),
     rows.id,
   ]);
   return true;
@@ -407,7 +580,7 @@ export async function createAdminProduct(input) {
       input.productType, input.shortDescription, input.description,
       input.ingredients, input.benefits, input.usageInstructions,
       input.specification, input.origin, input.mainImage,
-      input.listPrice, input.salePrice, input.costPrice, input.stock,
+      input.listPrice, input.salePrice, input.costPrice, 0,
       input.minimumStock, input.featured ? 1 : 0, input.status,
     ]);
     await replaceProductImages(connection, result.insertId, input.images);
@@ -430,7 +603,7 @@ export async function updateAdminProduct(productId, input) {
         danh_muc_id=?, ma_san_pham=?, ma_sku=?, ten_san_pham=?, duong_dan=?,
         loai_san_pham=?, mo_ta_ngan=?, mo_ta_chi_tiet=?, thanh_phan=?, cong_dung=?,
         huong_dan_su_dung=?, quy_cach=?, xuat_xu=?, anh_chinh_url=?,
-        gia_niem_yet=?, gia_ban=?, gia_von=?, so_luong_ton=?, ton_toi_thieu=?,
+        gia_niem_yet=?, gia_ban=?, gia_von=?, ton_toi_thieu=?,
         la_noi_bat=?, trang_thai=?
       WHERE id=?
     `, [
@@ -438,7 +611,7 @@ export async function updateAdminProduct(productId, input) {
       input.productType, input.shortDescription, input.description,
       input.ingredients, input.benefits, input.usageInstructions,
       input.specification, input.origin, input.mainImage,
-      input.listPrice, input.salePrice, input.costPrice, input.stock,
+      input.listPrice, input.salePrice, input.costPrice,
       input.minimumStock, input.featured ? 1 : 0, input.status, productId,
     ]);
     if (!result.affectedRows) {
@@ -522,11 +695,11 @@ export async function createAdminPromotion(input) {
       INSERT INTO khuyen_mai (
         ma_khuyen_mai, ten_khuyen_mai, mo_ta, loai_khuyen_mai,
         gia_tri, giam_toi_da, gia_tri_don_toi_thieu,
-        so_luot_su_dung_toi_da, ngay_bat_dau, ngay_ket_thuc, trang_thai
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        so_luot_su_dung_toi_da, so_luot_toi_da_moi_khach, ngay_bat_dau, ngay_ket_thuc, trang_thai
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       input.code, input.name, input.description, input.type, input.value,
-      input.maximumDiscount, input.minimumOrder, input.maximumUses,
+      input.maximumDiscount, input.minimumOrder, input.maximumUses, input.maximumUsesPerCustomer,
       input.startsAt, input.endsAt, input.status,
     ]);
     await replacePromotionProducts(connection, result.insertId, input.productIds);
@@ -546,11 +719,11 @@ export async function updateAdminPromotion(promotionId, input) {
       UPDATE khuyen_mai SET
         ma_khuyen_mai=?, ten_khuyen_mai=?, mo_ta=?, loai_khuyen_mai=?,
         gia_tri=?, giam_toi_da=?, gia_tri_don_toi_thieu=?,
-        so_luot_su_dung_toi_da=?, ngay_bat_dau=?, ngay_ket_thuc=?, trang_thai=?
+        so_luot_su_dung_toi_da=?, so_luot_toi_da_moi_khach=?, ngay_bat_dau=?, ngay_ket_thuc=?, trang_thai=?
       WHERE id=?
     `, [
       input.code, input.name, input.description, input.type, input.value,
-      input.maximumDiscount, input.minimumOrder, input.maximumUses,
+      input.maximumDiscount, input.minimumOrder, input.maximumUses, input.maximumUsesPerCustomer,
       input.startsAt, input.endsAt, input.status, promotionId,
     ]);
     if (!result.affectedRows) {
@@ -607,7 +780,8 @@ export async function findAdminInventory() {
   const [[products], [suppliers], [imports], [exports]] = await Promise.all([
     database.query(`
       SELECT id, ma_san_pham, ma_sku, ten_san_pham, anh_chinh_url,
-        so_luong_ton, ton_toi_thieu, gia_von, trang_thai
+        so_luong_ton, so_luong_giu_cho, (so_luong_ton-so_luong_giu_cho) AS so_luong_kha_dung,
+        ton_toi_thieu, gia_von, trang_thai
       FROM san_pham ORDER BY so_luong_ton ASC, ten_san_pham
     `),
     database.query(`
@@ -709,7 +883,7 @@ export async function createAdminExport(adminId, input) {
     await connection.beginTransaction();
     const productIds = input.items.map((item) => item.productId);
     const [products] = await connection.query(`
-      SELECT id, ten_san_pham, so_luong_ton, gia_von
+      SELECT id, ten_san_pham, (so_luong_ton-so_luong_giu_cho) AS so_luong_ton, gia_von
       FROM san_pham WHERE id IN (?) FOR UPDATE
     `, [productIds]);
     if (products.length !== productIds.length) {

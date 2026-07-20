@@ -35,6 +35,8 @@ function mapProduct(row) {
     tags: splitValues(row.cong_dung),
     usageInstructions: row.huong_dan_su_dung ?? "",
     isCombo: row.loai_san_pham === "COMBO",
+    stock: Number(row.so_luong_kha_dung),
+    inStock: Number(row.so_luong_kha_dung) > 0,
   };
 }
 
@@ -62,6 +64,15 @@ export async function getProductCatalog() {
       description: storeSettings.mo_ta ?? "",
       hotline: storeSettings.hotline ?? "",
       email: storeSettings.email ?? "",
+      legalName: storeSettings.ten_phap_ly ?? "",
+      supportEmail: storeSettings.email_ho_tro ?? "",
+      mapEmbedUrl: storeSettings.google_maps_url ?? "",
+      orderPrefix: storeSettings.tien_to_don_hang ?? "RBB",
+      codEnabled: Boolean(storeSettings.bat_cod), bankTransferEnabled: Boolean(storeSettings.bat_chuyen_khoan),
+      youtubeUrl: storeSettings.youtube_url ?? "", notificationEmail: storeSettings.email_thong_bao ?? "",
+      lowStockThreshold: Number(storeSettings.nguong_canh_bao_kho ?? 5),
+      sendOrderConfirmation: Boolean(storeSettings.gui_email_xac_nhan),
+      maintenanceMode: Boolean(storeSettings.che_do_bao_tri),
     },
     categories: [
       { name: "Tất cả sản phẩm", slug: "tat-ca" },

@@ -6,13 +6,26 @@ import {
   makeCustomerAddressDefault,
   registerCustomer,
   removeCustomerAddress,
-  socialLoginCustomer,
   updateCustomer,
   googleLoginCustomer,
   requestPasswordReset,
   resetForgottenPassword,
 } from "../services/customer.service.js";
 import { getCustomerSupportMessages, readCustomerSupportMessages } from "../services/contact.service.js";
+import { answerCustomerChatbot, getCustomerChatHistory } from "../services/chatbot.service.js";
+
+export async function askChatbot(request, response, next) {
+  try {
+    const message = String(request.body?.message ?? "").trim();
+    if (!message || message.length > 2000) throw Object.assign(new Error("Nội dung câu hỏi không hợp lệ"), { statusCode: 400 });
+    response.json({ success: true, data: await answerCustomerChatbot(request.auth.userId, message) });
+  } catch (error) { next(error); }
+}
+
+export async function showChatbotHistory(request, response, next) {
+  try { response.json({ success: true, data: { messages: await getCustomerChatHistory(request.auth.userId) } }); }
+  catch (error) { next(error); }
+}
 
 export async function register(request, response, next) {
   try { response.status(201).json({ success: true, data: await registerCustomer(request.body) }); }
@@ -21,11 +34,6 @@ export async function register(request, response, next) {
 
 export async function login(request, response, next) {
   try { response.json({ success: true, data: await loginCustomer(request.body) }); }
-  catch (error) { next(error); }
-}
-
-export async function socialLogin(request, response, next) {
-  try { response.json({ success: true, data: await socialLoginCustomer(request.body.provider) }); }
   catch (error) { next(error); }
 }
 

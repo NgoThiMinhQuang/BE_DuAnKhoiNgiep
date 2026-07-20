@@ -6,7 +6,7 @@ export async function findPublishedProducts() {
       sp.id, sp.ma_san_pham, sp.ma_sku, sp.ten_san_pham, sp.duong_dan,
       sp.loai_san_pham, sp.mo_ta_ngan, sp.mo_ta_chi_tiet, sp.thanh_phan,
       sp.cong_dung, sp.huong_dan_su_dung, sp.quy_cach, sp.xuat_xu, sp.anh_chinh_url,
-      sp.gia_niem_yet, sp.gia_ban,
+      sp.gia_niem_yet, sp.gia_ban, (sp.so_luong_ton-sp.so_luong_giu_cho) AS so_luong_kha_dung,
       dm.ten_danh_muc, dm.duong_dan AS danh_muc_duong_dan,
       GROUP_CONCAT(asp.duong_dan_anh ORDER BY asp.thu_tu_hien_thi, asp.id SEPARATOR '||') AS gallery
     FROM san_pham sp
@@ -68,7 +68,9 @@ export async function findApplicablePromotions(productId) {
 
 export async function findStoreSettings() {
   const [rows] = await database.query(`
-    SELECT ten_cua_hang, mo_ta, hotline, email
+    SELECT ten_cua_hang, mo_ta, hotline, email, ten_phap_ly, email_ho_tro,
+      google_maps_url, tien_to_don_hang, bat_cod, bat_chuyen_khoan, youtube_url,
+      email_thong_bao, nguong_canh_bao_kho, gui_email_xac_nhan, che_do_bao_tri
     FROM cau_hinh_cua_hang
     ORDER BY id
     LIMIT 1

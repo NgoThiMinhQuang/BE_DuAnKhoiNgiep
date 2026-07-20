@@ -32,6 +32,12 @@ import {
 } from "../repositories/admin.repository.js";
 
 const badRequest = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
+const storedImageUrl = (value, field) => {
+  if (value == null || value === "") return null;
+  const url = String(value).trim();
+  if (url.length > 500 || /^data:/i.test(url)) throw badRequest(`${field} phải là URL ảnh, không được gửi Base64`);
+  return url;
+};
 
 function pageOptions(query) {
   const page = Math.max(Number.parseInt(query.page ?? "1", 10) || 1, 1);
@@ -80,6 +86,11 @@ function mapOrder(order) {
     shippingProvider: order.don_vi_van_chuyen, trackingCode: order.ma_van_don,
     lineCount: Number(order.so_dong_san_pham ?? 0), itemCount: Number(order.tong_so_luong ?? 0),
     createdAt: order.ngay_tao, updatedAt: order.ngay_cap_nhat,
+    refundRequestId: order.yeu_cau_hoan_tien_id == null ? null : String(order.yeu_cau_hoan_tien_id),
+    refundStatus: order.trang_thai_hoan_tien ?? null,
+    refundAmount: order.so_tien_hoan == null ? null : Number(order.so_tien_hoan),
+    refundReason: order.ly_do_hoan_tien ?? null,
+    refundAdminNote: order.ghi_chu_hoan_tien ?? null,
   };
 }
 
@@ -137,6 +148,7 @@ export async function getAdminOrders(query) {
   const options = pageOptions(query);
   const result = await findAdminOrders({
     status: query.status, paymentStatus: query.paymentStatus,
+    paymentMethod: query.paymentMethod, period: query.period, sort: query.sort,
     search: query.search?.trim(), ...options,
   });
   return paged(result.rows.map(mapOrder), options.page, options.limit, result.total);
@@ -168,12 +180,20 @@ const transitions = {
   DA_HUY: [],
 };
 
-export async function changeAdminOrder(orderId, input) {
+const refundTransitions = {
+  YEU_CAU_HOAN_TIEN: ["DANG_HOAN_TIEN"],
+  DANG_HOAN_TIEN: ["DA_HOAN_TIEN", "HOAN_TIEN_THAT_BAI"],
+  HOAN_TIEN_THAT_BAI: ["DANG_HOAN_TIEN"],
+  DA_HOAN_TIEN: [],
+};
+
+export async function changeAdminOrder(adminId, orderId, input) {
   const current = await getAdminOrder(orderId);
   const orderStatuses = Object.keys(transitions);
-  const paymentStatuses = ["CHUA_THANH_TOAN", "DA_THANH_TOAN", "THAT_BAI", "DA_HOAN_TIEN"];
   if (input.orderStatus && !orderStatuses.includes(input.orderStatus)) throw badRequest("Trạng thái đơn hàng không hợp lệ");
-  if (input.paymentStatus && !paymentStatuses.includes(input.paymentStatus)) throw badRequest("Trạng thái thanh toán không hợp lệ");
+  if (input.paymentStatus && input.paymentStatus !== current.paymentStatus) {
+    throw badRequest("Admin không được đổi trực tiếp trạng thái thanh toán", 409);
+  }
   if (input.orderStatus && input.orderStatus !== current.orderStatus
     && !transitions[current.orderStatus].includes(input.orderStatus)) {
     throw badRequest(`Không thể chuyển đơn từ ${current.orderStatus} sang ${input.orderStatus}`, 409);
@@ -181,10 +201,30 @@ export async function changeAdminOrder(orderId, input) {
   if (input.orderStatus === "DA_HUY" && !input.cancelReason?.trim()) {
     throw badRequest("Vui lòng nhập lý do hủy đơn");
   }
+  if (input.orderStatus === "DA_XAC_NHAN" && current.paymentMethod === "CHUYEN_KHOAN"
+    && current.paymentStatus !== "DA_THANH_TOAN") {
+    throw badRequest("Đơn chuyển khoản phải thanh toán trước khi xác nhận", 409);
+  }
+  const isCancellingPaidOrder = input.orderStatus === "DA_HUY"
+    && current.orderStatus !== "DA_HUY"
+    && current.paymentStatus === "DA_THANH_TOAN";
+  if (isCancellingPaidOrder && input.refundAction !== "TAO_YEU_CAU") {
+    throw badRequest("Đơn đã thanh toán. Vui lòng chọn tạo yêu cầu hoàn tiền trước khi hủy", 409);
+  }
+  if (input.refundStatus) {
+    if (!Object.hasOwn(refundTransitions, input.refundStatus)) throw badRequest("Trạng thái hoàn tiền không hợp lệ");
+    if (!current.refundStatus) throw badRequest("Đơn hàng chưa có yêu cầu hoàn tiền", 409);
+    if (input.refundStatus !== current.refundStatus
+      && !refundTransitions[current.refundStatus].includes(input.refundStatus)) {
+      throw badRequest(`Không thể chuyển hoàn tiền từ ${current.refundStatus} sang ${input.refundStatus}`, 409);
+    }
+  }
   if (!await updateAdminOrderInTransaction(orderId, {
-    orderStatus: input.orderStatus, paymentStatus: input.paymentStatus,
+    orderStatus: input.orderStatus,
     adminNote: input.adminNote?.trim(), cancelReason: input.cancelReason?.trim(),
     shippingProvider: input.shippingProvider?.trim(), trackingCode: input.trackingCode?.trim(),
+    adminId, refundAction: input.refundAction, refundStatus: input.refundStatus,
+    refundAdminNote: input.refundAdminNote?.trim(),
   })) throw badRequest("Không tìm thấy đơn hàng", 404);
   return getAdminOrder(orderId);
 }
@@ -207,7 +247,8 @@ export async function changeAdminUser(adminId, userId, input) {
   if (input.role && !["ADMIN", "KHACH_HANG"].includes(input.role)) throw badRequest("Vai trò không hợp lệ");
   if (input.status && !["HOAT_DONG", "BI_KHOA"].includes(input.status)) throw badRequest("Trạng thái không hợp lệ");
   if (Number(adminId) === Number(userId) && input.status === "BI_KHOA") throw badRequest("Bạn không thể tự khóa tài khoản");
-  if (!await updateAdminUser(userId, input)) throw badRequest("Không tìm thấy tài khoản", 404);
+  if (Number(adminId) === Number(userId) && input.role === "KHACH_HANG") throw badRequest("Bạn không thể tự hạ quyền quản trị", 409);
+  if (!await updateAdminUser(adminId, userId, input)) throw badRequest("Không tìm thấy tài khoản", 404);
 }
 
 export async function getAdminReviews(query) {
@@ -261,7 +302,6 @@ export async function getAdminContacts(query) {
       sender: item.ho_ten, direction: "CUSTOMER", subject: item.tieu_de,
     }, ...parseContactReplies(item));
   }
-
   const conversations = [...byEmail.values()].map((item) => ({
     ...item,
     threadMessages: item.threadMessages.sort((left, right) => new Date(left.sentAt) - new Date(right.sentAt)),
@@ -286,10 +326,16 @@ export async function getAdminSettings() {
     shippingFee: Number(item.phi_van_chuyen),
     freeShippingThreshold: Number(item.nguong_mien_phi_van_chuyen),
     facebookUrl: item.facebook_url, instagramUrl: item.instagram_url, tiktokUrl: item.tiktok_url,
+    legalName: item.ten_phap_ly, supportEmail: item.email_ho_tro, mapEmbedUrl: item.google_maps_url,
+    orderPrefix: item.tien_to_don_hang, codEnabled: Boolean(item.bat_cod),
+    bankTransferEnabled: Boolean(item.bat_chuyen_khoan), youtubeUrl: item.youtube_url,
+    notificationEmail: item.email_thong_bao, lowStockThreshold: Number(item.nguong_canh_bao_kho),
+    sendOrderConfirmation: Boolean(item.gui_email_xac_nhan), maintenanceMode: Boolean(item.che_do_bao_tri),
   };
 }
 
 export async function changeAdminSettings(input) {
+  if (input.logoUrl !== undefined) input.logoUrl = storedImageUrl(input.logoUrl, "Logo");
   if (input.shippingFee != null) input.shippingFee = numberValue(input.shippingFee, "Phí vận chuyển");
   if (input.freeShippingThreshold != null) input.freeShippingThreshold = numberValue(input.freeShippingThreshold, "Ngưỡng miễn phí vận chuyển");
   if (!await updateAdminSettings(input)) throw badRequest("Chưa có cấu hình cửa hàng", 404);
@@ -299,7 +345,7 @@ export async function changeAdminSettings(input) {
 function normalizeImages(images, fallback) {
   const values = Array.isArray(images) ? images : [];
   const normalized = values.map((item, index) => ({
-    url: requiredText(typeof item === "string" ? item : item.url, "Đường dẫn ảnh"),
+    url: storedImageUrl(requiredText(typeof item === "string" ? item : item.url, "Đường dẫn ảnh"), "Ảnh sản phẩm"),
     altText: typeof item === "string" ? "" : item.altText?.trim() || "",
     order: typeof item === "string" ? index + 1 : integerValue(item.order ?? index + 1, "Thứ tự ảnh", 0),
   }));
@@ -309,7 +355,7 @@ function normalizeImages(images, fallback) {
 
 function normalizeProduct(input, current = null) {
   const name = requiredText(input.name ?? current?.name, "Tên sản phẩm");
-  const mainImage = input.mainImage ?? current?.mainImage ?? null;
+  const mainImage = storedImageUrl(input.mainImage ?? current?.mainImage ?? null, "Ảnh sản phẩm");
   const product = {
     categoryId: integerValue(input.categoryId ?? current?.categoryId, "Danh mục", 1),
     productCode: requiredText(input.productCode ?? current?.productCode, "Mã sản phẩm"),
@@ -326,7 +372,6 @@ function normalizeProduct(input, current = null) {
     listPrice: numberValue(input.listPrice ?? current?.listPrice, "Giá niêm yết"),
     salePrice: numberValue(input.salePrice ?? current?.salePrice, "Giá bán"),
     costPrice: numberValue(input.costPrice ?? current?.costPrice, "Giá vốn"),
-    stock: integerValue(input.stock ?? current?.stock ?? 0, "Tồn kho", 0),
     minimumStock: integerValue(input.minimumStock ?? current?.minimumStock ?? 0, "Tồn tối thiểu", 0),
     featured: Boolean(input.featured ?? current?.featured),
     status: input.status ?? current?.status ?? "NHAP",
@@ -417,16 +462,22 @@ function normalizePromotion(input, current = null) {
   if (!startsAt || !endsAt || new Date(startsAt) >= new Date(endsAt)) throw badRequest("Thời gian khuyến mãi không hợp lệ");
   const productIds = [...new Set((input.productIds ?? current?.productIds ?? []).map(Number))];
   if (productIds.some((id) => !Number.isInteger(id) || id < 1)) throw badRequest("Sản phẩm áp dụng không hợp lệ");
+  const value = numberValue(input.value ?? current?.value ?? 0, "Giá trị khuyến mãi");
+  if (type === "PHAN_TRAM" && (value < 1 || value > 100)) throw badRequest("Khuyến mãi phần trăm phải từ 1 đến 100");
+  if (type === "SO_TIEN" && value <= 0) throw badRequest("Số tiền giảm phải lớn hơn 0");
+  if (type === "MIEN_PHI_VAN_CHUYEN" && value !== 0) throw badRequest("Miễn phí vận chuyển phải có giá trị bằng 0");
+  const maximumDiscount = input.maximumDiscount == null && current?.maximumDiscount == null
+    ? null : numberValue(input.maximumDiscount ?? current.maximumDiscount, "Giảm tối đa");
+  if (type !== "PHAN_TRAM" && maximumDiscount != null) throw badRequest("Giảm tối đa chỉ áp dụng cho khuyến mãi phần trăm");
   return {
     code: requiredText(input.code ?? current?.code, "Mã khuyến mãi").toUpperCase(),
     name: requiredText(input.name ?? current?.name, "Tên khuyến mãi"),
     description: input.description ?? current?.description ?? null, type,
-    value: numberValue(input.value ?? current?.value ?? 0, "Giá trị khuyến mãi"),
-    maximumDiscount: input.maximumDiscount == null && current?.maximumDiscount == null
-      ? null : numberValue(input.maximumDiscount ?? current.maximumDiscount, "Giảm tối đa"),
+    value, maximumDiscount,
     minimumOrder: numberValue(input.minimumOrder ?? current?.minimumOrder ?? 0, "Đơn tối thiểu"),
     maximumUses: input.maximumUses == null && current?.maximumUses == null
       ? null : integerValue(input.maximumUses ?? current.maximumUses, "Lượt dùng tối đa", 1),
+    maximumUsesPerCustomer: integerValue(input.maximumUsesPerCustomer ?? current?.maximumUsesPerCustomer ?? 1, "Lượt dùng mỗi khách", 1),
     startsAt, endsAt, status, productIds,
   };
 }
@@ -438,6 +489,7 @@ export async function getAdminPromotions() {
     value: Number(item.gia_tri), maximumDiscount: item.giam_toi_da == null ? null : Number(item.giam_toi_da),
     minimumOrder: Number(item.gia_tri_don_toi_thieu),
     maximumUses: item.so_luot_su_dung_toi_da == null ? null : Number(item.so_luot_su_dung_toi_da),
+    maximumUsesPerCustomer: Number(item.so_luot_toi_da_moi_khach),
     usedCount: Number(item.so_luot_da_su_dung), startsAt: item.ngay_bat_dau,
     endsAt: item.ngay_ket_thuc, status: item.trang_thai,
     productIds: item.san_pham_ids ? item.san_pham_ids.split(",").map(String) : [],
@@ -533,7 +585,8 @@ export async function getAdminInventory() {
     products: data.products.map((item) => ({
       id: String(item.id), productCode: item.ma_san_pham, sku: item.ma_sku,
       name: item.ten_san_pham, image: item.anh_chinh_url,
-      stock: Number(item.so_luong_ton), minimumStock: Number(item.ton_toi_thieu),
+      stock: Number(item.so_luong_ton), reservedStock: Number(item.so_luong_giu_cho),
+      availableStock: Number(item.so_luong_kha_dung), minimumStock: Number(item.ton_toi_thieu),
       costPrice: Number(item.gia_von), status: item.trang_thai,
     })),
     suppliers: data.suppliers.map((item) => ({

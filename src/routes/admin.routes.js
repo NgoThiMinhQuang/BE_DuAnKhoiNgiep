@@ -1,4 +1,4 @@
-import { Router } from "express";
+import express, { Router } from "express";
 
 import {
   createArticle,
@@ -32,6 +32,7 @@ import {
   updateSupplier,
   updateUser,
 } from "../controllers/admin.controller.js";
+import { uploadImage } from "../controllers/media.controller.js";
 import { authenticate, requireAdmin } from "../middleware/authenticate.js";
 
 export const adminRouter = Router();
@@ -63,6 +64,11 @@ adminRouter.put("/promotions/:id", updatePromotion);
 adminRouter.get("/articles", listArticles);
 adminRouter.post("/articles", createArticle);
 adminRouter.put("/articles/:id", updateArticle);
+adminRouter.post(
+  "/uploads/images",
+  express.raw({ type: ["image/jpeg", "image/png", "image/webp", "image/gif"], limit: "5mb" }),
+  uploadImage,
+);
 adminRouter.get("/inventory", showInventory);
 adminRouter.post("/suppliers", createSupplier);
 adminRouter.put("/suppliers/:id", updateSupplier);

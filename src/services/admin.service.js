@@ -108,6 +108,7 @@ function mapDashboardPeriod(period) {
   const previous = numberFields(period.previous);
   return {
     stats: current,
+    previousStats: previous,
     changes: {
       revenue: percentageChange(current.revenue, previous.revenue),
       orders: percentageChange(current.orders, previous.orders),

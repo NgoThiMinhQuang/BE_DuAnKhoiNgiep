@@ -637,6 +637,27 @@ export async function hideAdminProduct(productId) {
   return result.affectedRows > 0;
 }
 
+export async function hardDeleteAdminProduct(productId) {
+  const connection = await database.getConnection();
+  try {
+    await connection.beginTransaction();
+    
+    // Xóa ảnh sản phẩm trước (foreign key constraint)
+    await connection.execute("DELETE FROM anh_san_pham WHERE san_pham_id=?", [productId]);
+    
+    // Xóa sản phẩm
+    const [result] = await connection.execute("DELETE FROM san_pham WHERE id=?", [productId]);
+    
+    await connection.commit();
+    return result.affectedRows > 0;
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
 export async function findAdminCategories() {
   const [rows] = await database.query(`
     SELECT dm.*, COUNT(sp.id) AS so_san_pham

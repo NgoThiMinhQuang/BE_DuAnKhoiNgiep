@@ -18,6 +18,7 @@ import {
   findAdminSettings,
   findAdminUsers,
   findDashboardData,
+  hardDeleteAdminProduct,
   hideAdminProduct,
   updateAdminArticle,
   updateAdminCategory,
@@ -419,6 +420,10 @@ export async function changeAdminProduct(productId, input) {
 
 export async function removeAdminProduct(productId) {
   if (!await hideAdminProduct(productId)) throw badRequest("Không tìm thấy sản phẩm", 404);
+}
+
+export async function permanentDeleteAdminProduct(productId) {
+  if (!await hardDeleteAdminProduct(productId)) throw badRequest("Không tìm thấy sản phẩm", 404);
 }
 
 function normalizeCategory(input, current = null) {

@@ -31,6 +31,7 @@ import {
   permanentDeleteAdminProduct,
   removeAdminCategory,
   removeAdminProduct,
+  removeAdminUser,
 } from "../services/admin.service.js";
 
 function action(service, { status = 200, input = "body", admin = false } = {}) {
@@ -55,6 +56,7 @@ export const showOrder = action(getAdminOrder, { input: null });
 export const updateOrder = action(changeAdminOrder, { admin: true });
 export const listUsers = action(getAdminUsers, { input: "query" });
 export const updateUser = action(changeAdminUser, { admin: true });
+export const deleteUser = action(removeAdminUser, { input: null, admin: true });
 export const listReviews = action(getAdminReviews, { input: "query" });
 export const updateReview = action(changeAdminReview);
 export const listContacts = action(getAdminContacts, { input: "query" });

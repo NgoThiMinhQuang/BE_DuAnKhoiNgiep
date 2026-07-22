@@ -20,6 +20,7 @@ import {
   findDashboardData,
   hardDeleteAdminProduct,
   hideAdminProduct,
+  deleteAdminCategory,
   updateAdminArticle,
   updateAdminCategory,
   updateAdminContact,
@@ -456,6 +457,10 @@ export async function changeAdminCategory(categoryId, input) {
   const current = (await getAdminCategories()).find((item) => item.id === String(categoryId));
   if (!current) throw badRequest("Không tìm thấy danh mục", 404);
   if (!await updateAdminCategory(categoryId, normalizeCategory(input, current))) throw badRequest("Không tìm thấy danh mục", 404);
+}
+
+export async function removeAdminCategory(categoryId) {
+  if (!await deleteAdminCategory(categoryId)) throw badRequest("Không tìm thấy danh mục", 404);
 }
 
 function normalizePromotion(input, current = null) {

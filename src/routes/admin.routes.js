@@ -8,6 +8,7 @@ import {
   createProduct,
   createPromotion,
   createSupplier,
+  deleteCategory,
   deleteProduct,
   forceDeleteProduct,
   listArticles,
@@ -60,6 +61,7 @@ adminRouter.delete("/products/:id/force", forceDeleteProduct);
 adminRouter.get("/categories", listCategories);
 adminRouter.post("/categories", createCategory);
 adminRouter.put("/categories/:id", updateCategory);
+adminRouter.delete("/categories/:id", deleteCategory);
 adminRouter.get("/promotions", listPromotions);
 adminRouter.post("/promotions", createPromotion);
 adminRouter.put("/promotions/:id", updatePromotion);

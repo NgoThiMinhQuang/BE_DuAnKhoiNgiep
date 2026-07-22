@@ -687,6 +687,14 @@ export async function updateAdminCategory(categoryId, input) {
   return result.affectedRows > 0;
 }
 
+export async function deleteAdminCategory(categoryId) {
+  const [result] = await database.execute(
+    "DELETE FROM danh_muc_san_pham WHERE id=?",
+    [categoryId]
+  );
+  return result.affectedRows > 0;
+}
+
 export async function findAdminPromotions() {
   const [rows] = await database.query(`
     SELECT km.*,

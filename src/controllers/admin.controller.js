@@ -29,6 +29,7 @@ import {
   getAdminSettings,
   getAdminUsers,
   permanentDeleteAdminProduct,
+  removeAdminCategory,
   removeAdminProduct,
 } from "../services/admin.service.js";
 
@@ -68,6 +69,7 @@ export const forceDeleteProduct = action(permanentDeleteAdminProduct, { input: n
 export const listCategories = action(getAdminCategories, { input: null });
 export const createCategory = action(addAdminCategory, { status: 201 });
 export const updateCategory = action(changeAdminCategory);
+export const deleteCategory = action(removeAdminCategory, { input: null });
 export const listPromotions = action(getAdminPromotions, { input: null });
 export const createPromotion = action(addAdminPromotion, { status: 201 });
 export const updatePromotion = action(changeAdminPromotion);

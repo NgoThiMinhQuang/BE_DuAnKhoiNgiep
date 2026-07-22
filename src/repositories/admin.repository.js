@@ -381,7 +381,7 @@ export async function updateAdminOrderInTransaction(orderId, changes) {
 }
 
 export async function findAdminUsers({ role, status, search, limit, offset }) {
-  const conditions = ["1=1"];
+  const conditions = ["nd.trang_thai != 'DA_XOA'"];  // Loại bỏ tài khoản đã xóa
   const values = [];
   if (role) { conditions.push("nd.vai_tro=?"); values.push(role); }
   if (status) { conditions.push("nd.trang_thai=?"); values.push(status); }
@@ -467,25 +467,11 @@ export async function deleteAdminUser(userId) {
       }
     }
     
-    // Kiểm tra xem user có đơn hàng không
-    const [orders] = await connection.execute("SELECT COUNT(*) as total FROM don_hang WHERE nguoi_dung_id=?", [userId]);
-    if (orders[0].total > 0) {
-      const error = new Error("Không thể xóa tài khoản đang có đơn hàng");
-      error.statusCode = 409;
-      throw error;
-    }
-    
-    // Xóa các dữ liệu liên quan trước (foreign key constraints)
-    await connection.execute("DELETE FROM dia_chi_nguoi_dung WHERE nguoi_dung_id=?", [userId]);
-    await connection.execute("DELETE FROM chi_tiet_gio_hang WHERE gio_hang_id IN (SELECT id FROM gio_hang WHERE nguoi_dung_id=?)", [userId]);
-    await connection.execute("DELETE FROM gio_hang WHERE nguoi_dung_id=?", [userId]);
-    await connection.execute("DELETE FROM yeu_thich WHERE nguoi_dung_id=?", [userId]);
-    await connection.execute("DELETE FROM danh_gia WHERE nguoi_dung_id=?", [userId]);
-    await connection.execute("DELETE FROM dat_lai_mat_khau WHERE nguoi_dung_id=?", [userId]);
-    await connection.execute("DELETE FROM lich_su_quyen_nguoi_dung WHERE nguoi_dung_id=?", [userId]);
-    
-    // Xóa user
-    const [result] = await connection.execute("DELETE FROM nguoi_dung WHERE id=?", [userId]);
+    // Soft delete: đổi trạng thái thành DA_XOA thay vì xóa thật
+    const [result] = await connection.execute(
+      "UPDATE nguoi_dung SET trang_thai='DA_XOA' WHERE id=?",
+      [userId]
+    );
     
     await connection.commit();
     return result.affectedRows > 0;

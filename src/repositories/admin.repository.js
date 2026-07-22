@@ -444,6 +444,59 @@ export async function updateAdminUser(adminId, userId, changes) {
   } finally { connection.release(); }
 }
 
+export async function deleteAdminUser(userId) {
+  const connection = await database.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [rows] = await connection.execute("SELECT vai_tro, trang_thai FROM nguoi_dung WHERE id=? FOR UPDATE", [userId]);
+    const user = rows[0];
+    if (!user) {
+      await connection.rollback();
+      return false;
+    }
+    
+    // Không cho xóa admin đang hoạt động
+    if (user.vai_tro === "ADMIN" && user.trang_thai === "HOAT_DONG") {
+      const [admins] = await connection.execute(
+        "SELECT id FROM nguoi_dung WHERE vai_tro='ADMIN' AND trang_thai='HOAT_DONG' FOR UPDATE",
+      );
+      if (admins.length <= 1) {
+        const error = new Error("Không thể xóa quản trị viên cuối cùng");
+        error.statusCode = 409;
+        throw error;
+      }
+    }
+    
+    // Kiểm tra xem user có đơn hàng không
+    const [orders] = await connection.execute("SELECT COUNT(*) as total FROM don_hang WHERE nguoi_dung_id=?", [userId]);
+    if (orders[0].total > 0) {
+      const error = new Error("Không thể xóa tài khoản đang có đơn hàng");
+      error.statusCode = 409;
+      throw error;
+    }
+    
+    // Xóa các dữ liệu liên quan trước (foreign key constraints)
+    await connection.execute("DELETE FROM dia_chi_nguoi_dung WHERE nguoi_dung_id=?", [userId]);
+    await connection.execute("DELETE FROM chi_tiet_gio_hang WHERE gio_hang_id IN (SELECT id FROM gio_hang WHERE nguoi_dung_id=?)", [userId]);
+    await connection.execute("DELETE FROM gio_hang WHERE nguoi_dung_id=?", [userId]);
+    await connection.execute("DELETE FROM yeu_thich WHERE nguoi_dung_id=?", [userId]);
+    await connection.execute("DELETE FROM danh_gia WHERE nguoi_dung_id=?", [userId]);
+    await connection.execute("DELETE FROM dat_lai_mat_khau WHERE nguoi_dung_id=?", [userId]);
+    await connection.execute("DELETE FROM lich_su_quyen_nguoi_dung WHERE nguoi_dung_id=?", [userId]);
+    
+    // Xóa user
+    const [result] = await connection.execute("DELETE FROM nguoi_dung WHERE id=?", [userId]);
+    
+    await connection.commit();
+    return result.affectedRows > 0;
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
 export async function findAdminReviews({ status, limit, offset }) {
   const where = status ? "WHERE dg.trang_thai=?" : "";
   const values = status ? [status] : [];

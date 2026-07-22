@@ -10,6 +10,7 @@ import {
   createSupplier,
   deleteCategory,
   deleteProduct,
+  deleteUser,
   forceDeleteProduct,
   listArticles,
   listCategories,
@@ -47,6 +48,7 @@ adminRouter.get("/orders/:id", showOrder);
 adminRouter.patch("/orders/:id", updateOrder);
 adminRouter.get("/users", listUsers);
 adminRouter.patch("/users/:id", updateUser);
+adminRouter.delete("/users/:id", deleteUser);
 adminRouter.get("/reviews", listReviews);
 adminRouter.patch("/reviews/:id", updateReview);
 adminRouter.get("/contacts", listContacts);

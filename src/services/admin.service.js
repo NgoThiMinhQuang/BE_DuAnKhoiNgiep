@@ -21,6 +21,7 @@ import {
   hardDeleteAdminProduct,
   hideAdminProduct,
   deleteAdminCategory,
+  deleteAdminUser,
   updateAdminArticle,
   updateAdminCategory,
   updateAdminContact,
@@ -252,6 +253,11 @@ export async function changeAdminUser(adminId, userId, input) {
   if (Number(adminId) === Number(userId) && input.status === "BI_KHOA") throw badRequest("Bạn không thể tự khóa tài khoản");
   if (Number(adminId) === Number(userId) && input.role === "KHACH_HANG") throw badRequest("Bạn không thể tự hạ quyền quản trị", 409);
   if (!await updateAdminUser(adminId, userId, input)) throw badRequest("Không tìm thấy tài khoản", 404);
+}
+
+export async function removeAdminUser(adminId, userId) {
+  if (Number(adminId) === Number(userId)) throw badRequest("Bạn không thể tự xóa tài khoản của mình", 409);
+  if (!await deleteAdminUser(userId)) throw badRequest("Không tìm thấy tài khoản", 404);
 }
 
 export async function getAdminReviews(query) {

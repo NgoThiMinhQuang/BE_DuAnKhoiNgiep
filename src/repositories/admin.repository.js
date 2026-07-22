@@ -850,7 +850,9 @@ export async function findAdminInventory() {
       SELECT id, ma_san_pham, ma_sku, ten_san_pham, anh_chinh_url,
         so_luong_ton, so_luong_giu_cho, (so_luong_ton-so_luong_giu_cho) AS so_luong_kha_dung,
         ton_toi_thieu, gia_von, trang_thai
-      FROM san_pham ORDER BY so_luong_ton ASC, ten_san_pham
+      FROM san_pham 
+      WHERE trang_thai != 'NGUNG_BAN'
+      ORDER BY so_luong_ton ASC, ten_san_pham
     `),
     database.query(`
       SELECT * FROM nha_cung_cap ORDER BY trang_thai, ten_nha_cung_cap

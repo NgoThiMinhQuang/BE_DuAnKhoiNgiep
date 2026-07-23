@@ -40,6 +40,7 @@ import {
   updateAdminUser,
 } from "../repositories/admin.repository.js";
 import { calculateProfitability } from "../domain/profitability.js";
+import { notifyUser } from "./notification.service.js";
 
 const badRequest = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
 const storedImageUrl = (value, field) => {
@@ -211,6 +212,22 @@ const refundTransitions = {
   DA_HOAN_TIEN: [],
 };
 
+const orderStatusLabels = {
+  CHO_XAC_NHAN: "Chờ xác nhận",
+  DA_XAC_NHAN: "Đã xác nhận",
+  DANG_CHUAN_BI: "Đang đóng gói",
+  DANG_GIAO: "Đang giao hàng",
+  DA_GIAO: "Đã giao hàng",
+  DA_HUY: "Đã hủy",
+};
+
+const refundStatusLabels = {
+  YEU_CAU_HOAN_TIEN: "Đã tạo yêu cầu hoàn tiền",
+  DANG_HOAN_TIEN: "Đang hoàn tiền",
+  DA_HOAN_TIEN: "Đã hoàn tiền",
+  HOAN_TIEN_THAT_BAI: "Hoàn tiền chưa thành công",
+};
+
 export async function changeAdminOrder(adminId, orderId, input) {
   const current = await getAdminOrder(orderId);
   const orderStatuses = Object.keys(transitions);
@@ -250,7 +267,26 @@ export async function changeAdminOrder(adminId, orderId, input) {
     adminId, refundAction: input.refundAction, refundStatus: input.refundStatus,
     refundAdminNote: input.refundAdminNote?.trim(),
   })) throw badRequest("Không tìm thấy đơn hàng", 404);
-  return getAdminOrder(orderId);
+  const updated = await getAdminOrder(orderId);
+  if (updated.orderStatus !== current.orderStatus) {
+    await notifyUser(Number(current.customerId), {
+      type: "TRANG_THAI_DON_HANG",
+      title: "Đơn hàng đã cập nhật",
+      content: `Đơn ${current.orderCode}: ${orderStatusLabels[updated.orderStatus] ?? updated.orderStatus}.`,
+      path: "/tai-khoan/don-hang",
+      tag: `order-status-${orderId}`,
+    });
+  }
+  if (updated.refundStatus && updated.refundStatus !== current.refundStatus) {
+    await notifyUser(Number(current.customerId), {
+      type: "HOAN_TIEN",
+      title: "Cập nhật hoàn tiền",
+      content: `Đơn ${current.orderCode}: ${refundStatusLabels[updated.refundStatus] ?? updated.refundStatus}.`,
+      path: "/tai-khoan/don-hang",
+      tag: `refund-${orderId}`,
+    });
+  }
+  return updated;
 }
 
 export async function getAdminUsers(query) {

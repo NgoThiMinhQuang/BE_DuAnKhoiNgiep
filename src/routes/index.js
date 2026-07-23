@@ -9,6 +9,7 @@ import { adminRouter } from "./admin.routes.js";
 import { contactRouter } from "./contact.routes.js";
 import { paymentRouter } from "./payment.routes.js";
 import { mediaRouter } from "./media.routes.js";
+import { notificationRouter, pushRouter } from "./notification.routes.js";
 
 export const apiRouter = Router();
 
@@ -22,4 +23,6 @@ apiRouter.use("/admin", adminRouter);
 apiRouter.use("/contact", contactRouter);
 apiRouter.use("/payments", paymentRouter);
 apiRouter.use("/media", mediaRouter);
+apiRouter.use("/notifications", notificationRouter);
+apiRouter.use("/push", pushRouter);
 

@@ -59,7 +59,8 @@ export async function handleSePayTransaction({
 
     const [payments] = await connection.execute(`
       SELECT gdt.id, gdt.don_hang_id, gdt.so_tien, gdt.trang_thai, gdt.het_han_luc,
-        dh.phuong_thuc_thanh_toan, dh.trang_thai_thanh_toan, dh.trang_thai_don_hang
+        dh.nguoi_dung_id, dh.ma_don_hang, dh.phuong_thuc_thanh_toan,
+        dh.trang_thai_thanh_toan, dh.trang_thai_don_hang
       FROM giao_dich_thanh_toan gdt
       INNER JOIN don_hang dh ON dh.id=gdt.don_hang_id
       WHERE gdt.ma_thanh_toan=?
@@ -117,6 +118,12 @@ export async function handleSePayTransaction({
     `, [payment.don_hang_id, "SePay xác nhận giao dịch", JSON.stringify({ transactionId, transactionDate })]);
     await updateWebhookLog(connection, transactionId, "DA_XU_LY", null, payment.don_hang_id);
     await connection.commit();
+    return {
+      orderId: Number(payment.don_hang_id),
+      userId: Number(payment.nguoi_dung_id),
+      orderCode: payment.ma_don_hang,
+      amount: transferAmount,
+    };
   } catch (error) {
     await connection.rollback();
     throw error;

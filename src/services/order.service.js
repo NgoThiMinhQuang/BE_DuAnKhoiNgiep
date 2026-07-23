@@ -4,6 +4,7 @@ import {
   createOrderInTransaction, findCheckoutContext,
 } from "../repositories/order.repository.js";
 import { createSePayPaymentCode } from "./payment.service.js";
+import { notifyAdmins, notifyUser } from "./notification.service.js";
 
 const statusMap = {
   CHO_XAC_NHAN: "CHO_XAC_NHAN", DA_XAC_NHAN: "DA_XAC_NHAN", DANG_CHUAN_BI: "DANG_DONG_GOI",
@@ -130,6 +131,22 @@ export async function createCustomerOrder(userId, input) {
     userId, productIds, { ...input, paymentCode },
     (context) => calculateCheckout(productIds, input.promotionCode, context),
   );
+  await Promise.all([
+    notifyUser(userId, {
+      type: "DON_HANG_MOI",
+      title: "Đặt hàng thành công",
+      content: `Đơn ${result.orderCode} đã được tạo và đang chờ xác nhận.`,
+      path: "/tai-khoan/don-hang",
+      tag: `order-${result.id}`,
+    }),
+    notifyAdmins({
+      type: "DON_HANG_MOI",
+      title: "Có đơn hàng mới",
+      content: `Đơn ${result.orderCode} trị giá ${Number(result.summary.totalPayment).toLocaleString("vi-VN")}đ đang chờ xác nhận.`,
+      path: "/admin/don-hang",
+      tag: `admin-order-${result.id}`,
+    }),
+  ]);
   return {
     id: String(result.id),
     orderCode: result.orderCode,
@@ -165,6 +182,13 @@ export async function cancelCustomerOrder(userId, orderId, reason) {
   if (!await cancelUserOrder(userId, orderId, reason?.trim() || "Người dùng yêu cầu hủy")) {
     throw badRequest("Chỉ có thể hủy đơn chưa thanh toán đang chờ xác nhận", 409);
   }
+  await notifyAdmins({
+    type: "DON_HANG_DA_HUY",
+    title: "Khách hàng đã hủy đơn",
+    content: `Đơn hàng #${orderId} vừa được khách hàng hủy.`,
+    path: "/admin/don-hang",
+    tag: `admin-order-cancelled-${orderId}`,
+  });
 }
 
 export async function submitCustomerOrderReviews(userId, orderId, inputReviews) {
@@ -180,6 +204,13 @@ export async function submitCustomerOrderReviews(userId, orderId, inputReviews) 
     if (error.code === "ER_DUP_ENTRY") throw badRequest("Đơn hàng đã được đánh giá", 409);
     throw error;
   }
+  await notifyAdmins({
+    type: "DANH_GIA_MOI",
+    title: "Có đánh giá sản phẩm mới",
+    content: `Khách hàng vừa gửi ${reviews.length} đánh giá từ đơn hàng #${orderId}.`,
+    path: "/admin/danh-gia",
+    tag: `admin-review-${orderId}`,
+  });
 }
 
 export async function getCustomerOrderReviews(userId, orderId) {

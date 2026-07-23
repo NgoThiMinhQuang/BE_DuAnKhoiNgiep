@@ -32,6 +32,21 @@ test("API quản trị yêu cầu đăng nhập", async () => {
   assert.equal(response.body.success, false);
 });
 
+test("API thông báo yêu cầu đăng nhập", async () => {
+  const response = await request(app).get("/api/notifications").expect(401);
+
+  assert.equal(response.body.success, false);
+});
+
+test("API đăng ký Web Push yêu cầu đăng nhập", async () => {
+  const response = await request(app)
+    .post("/api/push/subscribe")
+    .send({ endpoint: "https://example.com/push", keys: { p256dh: "test", auth: "test" } })
+    .expect(401);
+
+  assert.equal(response.body.success, false);
+});
+
 test("API social login giả không còn tồn tại", async () => {
   const response = await request(app)
     .post("/api/auth/social")

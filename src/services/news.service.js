@@ -7,6 +7,7 @@ import {
   increaseArticleViews,
   insertArticleComment,
 } from "../repositories/news.repository.js";
+import { notifyAdmins } from "./notification.service.js";
 
 function parseContent(value) {
   try {
@@ -95,5 +96,13 @@ export async function createNewsComment(articleId, input) {
     throw error;
   }
 
-  return insertArticleComment({ articleId, name, email, content });
+  const commentId = await insertArticleComment({ articleId, name, email, content });
+  await notifyAdmins({
+    type: "BINH_LUAN_BAI_VIET_MOI",
+    title: "Có bình luận bài viết mới",
+    content: `${name} đã bình luận bài “${article.tieu_de}”.`,
+    path: "/admin/binh-luan-bai-viet",
+    tag: `admin-article-comment-${commentId}`,
+  });
+  return commentId;
 }

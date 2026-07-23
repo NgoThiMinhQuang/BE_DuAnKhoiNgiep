@@ -139,3 +139,9 @@ CHUA_THANH_TOAN, DA_THANH_TOAN, THAT_BAI, DA_HOAN_TIEN
 
 Giá trị trạng thái sản phẩm:
 NHAP, DANG_BAN, TAM_AN, NGUNG_BAN
+THÔNG BÁO (yêu cầu Bearer token)
+GET    /api/notifications?limit=30          Lấy danh sách và số thông báo chưa đọc
+PATCH  /api/notifications/:id/read          Đánh dấu một thông báo đã đọc
+PATCH  /api/notifications/read-all          Đánh dấu tất cả thông báo đã đọc
+POST   /api/push/subscribe                   Đăng ký trình duyệt nhận Web Push
+DELETE /api/push/subscribe                   Hủy đăng ký Web Push theo endpoint

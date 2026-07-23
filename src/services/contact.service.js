@@ -2,6 +2,7 @@ import {
   continueContact, createContact, findContactsByEmail, findLatestContactByEmail, updateContactReplies,
 } from "../repositories/contact.repository.js";
 import { findUserById } from "../repositories/customer.repository.js";
+import { notifyAdmins } from "./notification.service.js";
 
 const invalid = (message) => Object.assign(new Error(message), { statusCode: 400 });
 
@@ -31,10 +32,24 @@ export async function submitContact(input = {}) {
       readAt: null,
     });
     await continueContact(current.id, { fullName, email, phone, adminNote: JSON.stringify({ replies }) });
+    await notifyAdmins({
+      type: "LIEN_HE_MOI",
+      title: "Khách hàng gửi thêm tin nhắn",
+      content: `${fullName}: ${message.slice(0, 160)}`,
+      path: "/admin/tin-nhan",
+      tag: `admin-contact-${current.id}`,
+    });
     return { id: String(current.id), status: "MOI", continued: true };
   }
 
   const id = await createContact({ fullName, email, phone, subject, message });
+  await notifyAdmins({
+    type: "LIEN_HE_MOI",
+    title: "Có liên hệ mới",
+    content: `${fullName}: ${(subject || message).slice(0, 160)}`,
+    path: "/admin/tin-nhan",
+    tag: `admin-contact-${id}`,
+  });
   return { id: String(id), status: "MOI", continued: false };
 }
 

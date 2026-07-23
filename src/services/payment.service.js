@@ -2,6 +2,7 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
 import { env } from "../config/env.js";
 import { findCustomerPayment, handleSePayTransaction } from "../repositories/payment.repository.js";
+import { notifyAdmins, notifyUser } from "./notification.service.js";
 
 const paymentCodeSuffixLength = 12;
 const httpError = (message, statusCode) => Object.assign(new Error(message), { statusCode });
@@ -110,11 +111,29 @@ export async function processSePayWebhook({ rawBody, signature, timestamp }) {
     throw httpError("Dữ liệu giao dịch SePay không hợp lệ", 400);
   }
 
-  await handleSePayTransaction({
+  const result = await handleSePayTransaction({
     payload,
     transactionId,
     transferAmount,
     paymentCode: extractPaymentCode(payload),
     expectedAccountNumber: env.sepay.accountNumber,
   });
+  if (result) {
+    await Promise.all([
+      notifyUser(result.userId, {
+        type: "THANH_TOAN_THANH_CONG",
+        title: "Thanh toán thành công",
+        content: `Đơn ${result.orderCode} đã nhận đủ ${result.amount.toLocaleString("vi-VN")}đ.`,
+        path: "/tai-khoan/don-hang",
+        tag: `payment-${result.orderId}`,
+      }),
+      notifyAdmins({
+        type: "THANH_TOAN_THANH_CONG",
+        title: "SePay xác nhận thanh toán",
+        content: `Đơn ${result.orderCode} đã thanh toán ${result.amount.toLocaleString("vi-VN")}đ.`,
+        path: "/admin/don-hang",
+        tag: `admin-payment-${result.orderId}`,
+      }),
+    ]);
+  }
 }

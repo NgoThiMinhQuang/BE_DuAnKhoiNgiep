@@ -58,7 +58,49 @@ function calculateCheckout(productIds, promotionCode, context) {
   };
 }
 
-function mapCheckoutSummary(summary, items, promotions) {
+function mapSuggestedPromotion(promotion, items, subtotal, baseShippingFee) {
+  const minimumOrder = Number(promotion.gia_tri_don_toi_thieu) || 0;
+  if (subtotal < minimumOrder) return null;
+  const productIds = promotion.san_pham_ids
+    ? promotion.san_pham_ids.split(",").map(Number)
+    : null;
+  const eligibleSubtotal = productIds
+    ? items.filter((item) => productIds.includes(item.id)).reduce((sum, item) => sum + item.gia_ban * item.so_luong, 0)
+    : subtotal;
+  if (productIds && eligibleSubtotal === 0) return null;
+
+  let estimatedSavings = 0;
+  if (promotion.loai_khuyen_mai === "PHAN_TRAM") {
+    estimatedSavings = eligibleSubtotal * Number(promotion.gia_tri) / 100;
+    if (promotion.giam_toi_da != null) estimatedSavings = Math.min(estimatedSavings, Number(promotion.giam_toi_da));
+  } else if (promotion.loai_khuyen_mai === "SO_TIEN") {
+    estimatedSavings = Math.min(eligibleSubtotal, Number(promotion.gia_tri));
+  } else if (promotion.loai_khuyen_mai === "MIEN_PHI_VAN_CHUYEN") {
+    estimatedSavings = baseShippingFee;
+  }
+  estimatedSavings = Math.round(estimatedSavings);
+  if (estimatedSavings <= 0) return null;
+
+  return {
+    code: promotion.ma_khuyen_mai,
+    title: promotion.ten_khuyen_mai,
+    description: promotion.mo_ta,
+    minimumOrder,
+    type: promotion.loai_khuyen_mai,
+    estimatedSavings,
+  };
+}
+
+function mapCheckoutSummary(summary, context) {
+  const { items, promotions, settings } = context;
+  const threshold = Number(settings.nguong_mien_phi_van_chuyen) || 0;
+  const standardShippingFee = Number(settings.phi_van_chuyen) || 0;
+  const baseShippingFee = threshold > 0 && summary.subtotal >= threshold ? 0 : standardShippingFee;
+  const suggestedPromotions = promotions
+    .map((item) => mapSuggestedPromotion(item, items, summary.subtotal, baseShippingFee))
+    .filter(Boolean)
+    .sort((first, second) => second.estimatedSavings - first.estimatedSavings || first.code.localeCompare(second.code));
+
   return {
     items: items.map((item) => ({
       productId: String(item.id), productName: item.ten_san_pham, productImage: item.anh_chinh_url,
@@ -67,17 +109,14 @@ function mapCheckoutSummary(summary, items, promotions) {
     subtotal: summary.subtotal, discountAmount: summary.discountAmount,
     shippingFee: summary.shippingFee, totalPayment: summary.totalPayment,
     appliedPromotion: summary.promotion ? { code: summary.promotion.ma_khuyen_mai, description: summary.promotion.ten_khuyen_mai } : null,
-    promotions: promotions.map((item) => ({
-      code: item.ma_khuyen_mai, title: item.ten_khuyen_mai, description: item.mo_ta,
-      minimumOrder: item.gia_tri_don_toi_thieu,
-    })),
+    promotions: suggestedPromotions,
   };
 }
 
 export async function getCheckoutQuote(userId, input) {
   const productIds = normalizeProductIds(input.productIds);
   const context = await findCheckoutContext(userId, productIds);
-  return mapCheckoutSummary(calculateCheckout(productIds, input.promotionCode, context), context.items, context.promotions);
+  return mapCheckoutSummary(calculateCheckout(productIds, input.promotionCode, context), context);
 }
 
 export async function createCustomerOrder(userId, input) {

@@ -676,13 +676,19 @@ function normalizeSupplier(input, current = null) {
   const status = input.status ?? current?.status ?? "HOAT_DONG";
   if (!['HOAT_DONG', 'NGUNG_HOP_TAC'].includes(status)) throw badRequest("Trạng thái nhà cung cấp không hợp lệ");
   return {
-    code: requiredText(input.code ?? current?.code, "Mã nhà cung cấp"),
+    code: current ? requiredText(input.code ?? current.code, "Mã nhà cung cấp") : createSupplierCode(),
     name: requiredText(input.name ?? current?.name, "Tên nhà cung cấp"),
     contactName: input.contactName ?? current?.contactName ?? null,
     phone: input.phone ?? current?.phone ?? null, email: input.email ?? current?.email ?? null,
     address: input.address ?? current?.address ?? null, note: input.note ?? current?.note ?? null,
     status,
   };
+}
+
+function createSupplierCode() {
+  const date = new Date().toISOString().slice(2, 10).replaceAll("-", "");
+  const uniquePart = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`.toUpperCase();
+  return `NCC-${date}-${uniquePart}`;
 }
 
 function normalizeVoucherItems(items, useSystemCost = false) {

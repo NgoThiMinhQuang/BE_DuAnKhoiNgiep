@@ -929,14 +929,14 @@ export async function findAdminArticles() {
   return rows;
 }
 
-export async function createAdminArticle(adminId, input) {
+export async function createAdminArticle(input) {
   const [result] = await database.execute(`
     INSERT INTO bai_viet (
       tac_gia_id, chuyen_muc, tieu_de, duong_dan, tom_tat, noi_dung,
       anh_dai_dien_url, la_noi_bat, trang_thai, ngay_dang
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `, [
-    adminId, input.category, input.title, input.slug, input.summary,
+    input.authorId, input.category, input.title, input.slug, input.summary,
     input.content, input.imageUrl, input.featured ? 1 : 0,
     input.status, input.publishedAt,
   ]);
@@ -946,11 +946,11 @@ export async function createAdminArticle(adminId, input) {
 export async function updateAdminArticle(articleId, input) {
   const [result] = await database.execute(`
     UPDATE bai_viet SET
-      chuyen_muc=?, tieu_de=?, duong_dan=?, tom_tat=?, noi_dung=?,
+      tac_gia_id=?, chuyen_muc=?, tieu_de=?, duong_dan=?, tom_tat=?, noi_dung=?,
       anh_dai_dien_url=?, la_noi_bat=?, trang_thai=?, ngay_dang=?
     WHERE id=?
   `, [
-    input.category, input.title, input.slug, input.summary, input.content,
+    input.authorId, input.category, input.title, input.slug, input.summary, input.content,
     input.imageUrl, input.featured ? 1 : 0, input.status,
     input.publishedAt, articleId,
   ]);

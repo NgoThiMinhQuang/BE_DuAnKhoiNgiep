@@ -108,6 +108,7 @@ Body gợi ý:
 [ADMIN] GET    /api/admin/promotions             Danh sách khuyến mãi
 [ADMIN] POST   /api/admin/promotions             Tạo khuyến mãi
 [ADMIN] PUT    /api/admin/promotions/:id         Cập nhật khuyến mãi
+[ADMIN] DELETE /api/admin/promotions/:id         Xóa mã chưa dùng hoặc kết thúc mã đã dùng
 
 [ADMIN] GET    /api/admin/articles               Danh sách bài viết quản trị
 [ADMIN] POST   /api/admin/articles               Tạo bài viết

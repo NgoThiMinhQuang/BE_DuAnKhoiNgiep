@@ -10,6 +10,7 @@ import {
   createSupplier,
   deleteCategory,
   deleteProduct,
+  deletePromotion,
   deleteUser,
   forceDeleteProduct,
   listArticles,
@@ -24,6 +25,7 @@ import {
   showInventory,
   showOrder,
   showSettings,
+  showUser,
   updateArticle,
   updateCategory,
   updateContact,
@@ -47,6 +49,7 @@ adminRouter.get("/orders", listOrders);
 adminRouter.get("/orders/:id", showOrder);
 adminRouter.patch("/orders/:id", updateOrder);
 adminRouter.get("/users", listUsers);
+adminRouter.get("/users/:id", showUser);
 adminRouter.patch("/users/:id", updateUser);
 adminRouter.delete("/users/:id", deleteUser);
 adminRouter.get("/reviews", listReviews);
@@ -67,6 +70,7 @@ adminRouter.delete("/categories/:id", deleteCategory);
 adminRouter.get("/promotions", listPromotions);
 adminRouter.post("/promotions", createPromotion);
 adminRouter.put("/promotions/:id", updatePromotion);
+adminRouter.delete("/promotions/:id", deletePromotion);
 adminRouter.get("/articles", listArticles);
 adminRouter.post("/articles", createArticle);
 adminRouter.put("/articles/:id", updateArticle);

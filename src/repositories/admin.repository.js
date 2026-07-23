@@ -395,6 +395,8 @@ export async function findAdminUsers({ role, status, search, limit, offset }) {
   const [rows] = await database.query(`
     SELECT nd.id, nd.ho_ten, nd.email, nd.so_dien_thoai, nd.anh_dai_dien_url,
       nd.vai_tro, nd.trang_thai, nd.ngay_tao,
+      (SELECT COUNT(*) FROM dia_chi_nguoi_dung dc WHERE dc.nguoi_dung_id=nd.id) AS so_dia_chi,
+      GREATEST(nd.ngay_cap_nhat, COALESCE(MAX(dh.ngay_cap_nhat), nd.ngay_cap_nhat)) AS hoat_dong_gan_nhat,
       COUNT(dh.id) AS so_don_hang,
       COALESCE(SUM(CASE WHEN dh.trang_thai_don_hang='DA_GIAO' THEN dh.tong_thanh_toan ELSE 0 END), 0) AS tong_chi_tieu
     FROM nguoi_dung nd
@@ -407,6 +409,40 @@ export async function findAdminUsers({ role, status, search, limit, offset }) {
   return { rows, total: Number(countRows[0].total) };
 }
 
+export async function findAdminUserById(userId) {
+  const [[users], [addresses], [orders]] = await Promise.all([
+    database.execute(`
+      SELECT nd.id, nd.ho_ten, nd.email, nd.so_dien_thoai, nd.anh_dai_dien_url,
+        nd.google_sub, nd.ngay_sinh, nd.gioi_tinh, nd.vai_tro, nd.trang_thai,
+        nd.ngay_tao, nd.ngay_cap_nhat,
+        COUNT(DISTINCT dh.id) AS so_don_hang,
+        COALESCE(SUM(CASE WHEN dh.trang_thai_don_hang='DA_GIAO' THEN dh.tong_thanh_toan ELSE 0 END), 0) AS tong_chi_tieu
+      FROM nguoi_dung nd
+      LEFT JOIN don_hang dh ON dh.nguoi_dung_id=nd.id
+      WHERE nd.id=?
+      GROUP BY nd.id
+      LIMIT 1
+    `, [userId]),
+    database.execute(`
+      SELECT id, ten_nguoi_nhan, so_dien_thoai, tinh_thanh, quan_huyen,
+        phuong_xa, dia_chi_chi_tiet, la_mac_dinh
+      FROM dia_chi_nguoi_dung
+      WHERE nguoi_dung_id=?
+      ORDER BY la_mac_dinh DESC, id DESC
+    `, [userId]),
+    database.execute(`
+      SELECT id, ma_don_hang, tong_thanh_toan, phuong_thuc_thanh_toan,
+        trang_thai_thanh_toan, trang_thai_don_hang, ngay_tao
+      FROM don_hang
+      WHERE nguoi_dung_id=?
+      ORDER BY ngay_tao DESC
+      LIMIT 5
+    `, [userId]),
+  ]);
+  if (!users[0]) return null;
+  return { user: users[0], addresses, orders };
+}
+
 export async function updateAdminUser(adminId, userId, changes) {
   const connection = await database.getConnection();
   try {
@@ -414,7 +450,7 @@ export async function updateAdminUser(adminId, userId, changes) {
     const [rows] = await connection.execute("SELECT * FROM nguoi_dung WHERE id=? FOR UPDATE", [userId]);
     const current = rows[0];
     if (!current) { await connection.rollback(); return false; }
-    const nextRole = changes.role ?? current.vai_tro;
+    const nextRole = current.vai_tro;
     const nextStatus = changes.status ?? current.trang_thai;
     const removesActiveAdmin = current.vai_tro === "ADMIN" && current.trang_thai === "HOAT_DONG"
       && (nextRole !== "ADMIN" || nextStatus !== "HOAT_DONG");
@@ -801,6 +837,40 @@ export async function updateAdminPromotion(promotionId, input) {
     await replacePromotionProducts(connection, promotionId, input.productIds);
     await connection.commit();
     return true;
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally { connection.release(); }
+}
+
+export async function deleteOrEndAdminPromotion(promotionId) {
+  const connection = await database.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [rows] = await connection.execute(`
+      SELECT id, so_luot_da_su_dung
+      FROM khuyen_mai
+      WHERE id=?
+      FOR UPDATE
+    `, [promotionId]);
+    const promotion = rows[0];
+    if (!promotion) {
+      await connection.rollback();
+      return null;
+    }
+
+    if (Number(promotion.so_luot_da_su_dung) > 0) {
+      await connection.execute(
+        "UPDATE khuyen_mai SET trang_thai='HET_HAN' WHERE id=?",
+        [promotionId],
+      );
+      await connection.commit();
+      return { action: "ended" };
+    }
+
+    await connection.execute("DELETE FROM khuyen_mai WHERE id=?", [promotionId]);
+    await connection.commit();
+    return { action: "deleted" };
   } catch (error) {
     await connection.rollback();
     throw error;

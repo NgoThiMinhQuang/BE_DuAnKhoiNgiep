@@ -27,10 +27,12 @@ import {
   getAdminPromotions,
   getAdminReviews,
   getAdminSettings,
+  getAdminUser,
   getAdminUsers,
   permanentDeleteAdminProduct,
   removeAdminCategory,
   removeAdminProduct,
+  removeAdminPromotion,
   removeAdminUser,
 } from "../services/admin.service.js";
 
@@ -55,6 +57,7 @@ export const listOrders = action(getAdminOrders, { input: "query" });
 export const showOrder = action(getAdminOrder, { input: null });
 export const updateOrder = action(changeAdminOrder, { admin: true });
 export const listUsers = action(getAdminUsers, { input: "query" });
+export const showUser = action(getAdminUser, { input: null });
 export const updateUser = action(changeAdminUser, { admin: true });
 export const deleteUser = action(removeAdminUser, { input: null, admin: true });
 export const listReviews = action(getAdminReviews, { input: "query" });
@@ -75,6 +78,7 @@ export const deleteCategory = action(removeAdminCategory, { input: null });
 export const listPromotions = action(getAdminPromotions, { input: null });
 export const createPromotion = action(addAdminPromotion, { status: 201 });
 export const updatePromotion = action(changeAdminPromotion);
+export const deletePromotion = action(removeAdminPromotion, { input: null });
 export const listArticles = action(getAdminArticles, { input: null });
 export const createArticle = action(addAdminArticle, { status: 201, admin: true });
 export const updateArticle = action(changeAdminArticle);

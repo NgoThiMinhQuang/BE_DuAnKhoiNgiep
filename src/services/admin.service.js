@@ -6,6 +6,7 @@ import {
   createAdminProduct,
   createAdminPromotion,
   createAdminSupplier,
+  deleteOrEndAdminPromotion,
   findAdminArticles,
   findAdminCategories,
   findAdminContacts,
@@ -16,6 +17,7 @@ import {
   findAdminPromotions,
   findAdminReviews,
   findAdminSettings,
+  findAdminUserById,
   findAdminUsers,
   findDashboardData,
   hardDeleteAdminProduct,
@@ -243,15 +245,41 @@ export async function getAdminUsers(query) {
     phone: item.so_dien_thoai, avatar: item.anh_dai_dien_url,
     role: item.vai_tro, status: item.trang_thai,
     orderCount: Number(item.so_don_hang), spending: Number(item.tong_chi_tieu),
-    createdAt: item.ngay_tao,
+    addressCount: Number(item.so_dia_chi), createdAt: item.ngay_tao,
+    lastActiveAt: item.hoat_dong_gan_nhat,
   })), options.page, options.limit, result.total);
 }
 
+export async function getAdminUser(userId) {
+  const result = await findAdminUserById(userId);
+  if (!result) throw badRequest("Không tìm thấy tài khoản", 404);
+  const { user, addresses, orders } = result;
+  return {
+    id: String(user.id), fullName: user.ho_ten, email: user.email,
+    phone: user.so_dien_thoai, avatar: user.anh_dai_dien_url,
+    linkedGoogle: Boolean(user.google_sub), birthDate: user.ngay_sinh,
+    gender: user.gioi_tinh, role: user.vai_tro, status: user.trang_thai,
+    orderCount: Number(user.so_don_hang), spending: Number(user.tong_chi_tieu),
+    createdAt: user.ngay_tao, updatedAt: user.ngay_cap_nhat,
+    addresses: addresses.map((item) => ({
+      id: String(item.id), recipientName: item.ten_nguoi_nhan, phone: item.so_dien_thoai,
+      address: [item.dia_chi_chi_tiet, item.phuong_xa, item.quan_huyen, item.tinh_thanh].filter(Boolean).join(", "),
+      isDefault: Boolean(item.la_mac_dinh),
+    })),
+    recentOrders: orders.map((item) => ({
+      id: String(item.id), orderCode: item.ma_don_hang, total: Number(item.tong_thanh_toan),
+      paymentMethod: item.phuong_thuc_thanh_toan, paymentStatus: item.trang_thai_thanh_toan,
+      orderStatus: item.trang_thai_don_hang, createdAt: item.ngay_tao,
+    })),
+  };
+}
+
 export async function changeAdminUser(adminId, userId, input) {
-  if (input.role && !["ADMIN", "KHACH_HANG"].includes(input.role)) throw badRequest("Vai trò không hợp lệ");
+  if (Object.prototype.hasOwnProperty.call(input, "role")) {
+    throw badRequest("Không được thay đổi vai trò tại chức năng quản lý tài khoản", 403);
+  }
   if (input.status && !["HOAT_DONG", "BI_KHOA"].includes(input.status)) throw badRequest("Trạng thái không hợp lệ");
   if (Number(adminId) === Number(userId) && input.status === "BI_KHOA") throw badRequest("Bạn không thể tự khóa tài khoản");
-  if (Number(adminId) === Number(userId) && input.role === "KHACH_HANG") throw badRequest("Bạn không thể tự hạ quyền quản trị", 409);
   if (!await updateAdminUser(adminId, userId, input)) throw badRequest("Không tìm thấy tài khoản", 404);
 }
 
@@ -521,6 +549,12 @@ export async function changeAdminPromotion(promotionId, input) {
   const current = (await getAdminPromotions()).find((item) => item.id === String(promotionId));
   if (!current) throw badRequest("Không tìm thấy khuyến mãi", 404);
   if (!await updateAdminPromotion(promotionId, normalizePromotion(input, current))) throw badRequest("Không tìm thấy khuyến mãi", 404);
+}
+
+export async function removeAdminPromotion(promotionId) {
+  const result = await deleteOrEndAdminPromotion(promotionId);
+  if (!result) throw badRequest("Không tìm thấy khuyến mại", 404);
+  return result;
 }
 
 function normalizeArticle(input, current = null) {

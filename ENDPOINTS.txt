@@ -24,6 +24,9 @@ Quy ước xác thực
 [PUBLIC] GET  /api/news                      Danh sách bài viết
 [PUBLIC] GET  /api/news/:id                  Chi tiết bài viết
 [PUBLIC] POST /api/news/:id/comments         Gửi bình luận bài viết
+[ADMIN]  GET /api/admin/article-comments    Danh sách bình luận bài viết
+[ADMIN]  PATCH /api/admin/article-comments/:id  Duyệt hoặc từ chối bình luận bài viết
+[ADMIN]  DELETE /api/admin/article-comments/:id Xóa vĩnh viễn bình luận bài viết
 
 [PUBLIC] POST /api/contact                   Gửi liên hệ
 Body gợi ý:

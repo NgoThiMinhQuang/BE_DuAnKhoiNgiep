@@ -9,11 +9,14 @@ import {
   createPromotion,
   createSupplier,
   deleteCategory,
+  deleteArticle,
+  deleteArticleComment,
   deleteProduct,
   deletePromotion,
   deleteUser,
   forceDeleteProduct,
   listArticles,
+  listArticleComments,
   listCategories,
   listContacts,
   listOrders,
@@ -27,6 +30,7 @@ import {
   showSettings,
   showUser,
   updateArticle,
+  updateArticleComment,
   updateCategory,
   updateContact,
   updateOrder,
@@ -74,6 +78,10 @@ adminRouter.delete("/promotions/:id", deletePromotion);
 adminRouter.get("/articles", listArticles);
 adminRouter.post("/articles", createArticle);
 adminRouter.put("/articles/:id", updateArticle);
+adminRouter.delete("/articles/:id", deleteArticle);
+adminRouter.get("/article-comments", listArticleComments);
+adminRouter.patch("/article-comments/:id", updateArticleComment);
+adminRouter.delete("/article-comments/:id", deleteArticleComment);
 adminRouter.post(
   "/uploads/images",
   express.raw({ type: ["image/jpeg", "image/png", "image/webp", "image/gif"], limit: "5mb" }),

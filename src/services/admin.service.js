@@ -617,6 +617,17 @@ function normalizeArticle(input, current = null) {
   };
 }
 
+async function resolveArticleAuthorId(value, fallbackId = null) {
+  const rawAuthorId = value ?? fallbackId;
+  if (rawAuthorId == null || rawAuthorId === "") return null;
+  const authorId = integerValue(rawAuthorId, "Tác giả", 1);
+  const author = await findAdminUserById(authorId);
+  if (!author || author.user.vai_tro !== "ADMIN" || author.user.trang_thai === "DA_XOA") {
+    throw badRequest("Tác giả phải là một tài khoản quản trị hợp lệ");
+  }
+  return authorId;
+}
+
 export async function getAdminArticles() {
   return (await findAdminArticles()).map((item) => ({
     id: String(item.id), authorId: item.tac_gia_id == null ? null : String(item.tac_gia_id),
@@ -630,13 +641,17 @@ export async function getAdminArticles() {
 }
 
 export async function addAdminArticle(adminId, input) {
-  return { id: String(await createAdminArticle(adminId, normalizeArticle(input))) };
+  const article = normalizeArticle(input);
+  article.authorId = await resolveArticleAuthorId(input.authorId, adminId);
+  return { id: String(await createAdminArticle(article)) };
 }
 
 export async function changeAdminArticle(articleId, input) {
   const current = (await getAdminArticles()).find((item) => item.id === String(articleId));
   if (!current) throw badRequest("Không tìm thấy bài viết", 404);
-  if (!await updateAdminArticle(articleId, normalizeArticle(input, current))) throw badRequest("Không tìm thấy bài viết", 404);
+  const article = normalizeArticle(input, current);
+  article.authorId = await resolveArticleAuthorId(input.authorId, current.authorId);
+  if (!await updateAdminArticle(articleId, article)) throw badRequest("Không tìm thấy bài viết", 404);
 }
 
 export async function removeAdminArticle(articleId) {

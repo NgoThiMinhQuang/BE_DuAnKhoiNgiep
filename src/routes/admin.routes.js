@@ -9,6 +9,7 @@ import {
   createPromotion,
   createSupplier,
   deleteCategory,
+  deleteArticle,
   deleteProduct,
   deletePromotion,
   deleteUser,
@@ -74,6 +75,7 @@ adminRouter.delete("/promotions/:id", deletePromotion);
 adminRouter.get("/articles", listArticles);
 adminRouter.post("/articles", createArticle);
 adminRouter.put("/articles/:id", updateArticle);
+adminRouter.delete("/articles/:id", deleteArticle);
 adminRouter.post(
   "/uploads/images",
   express.raw({ type: ["image/jpeg", "image/png", "image/webp", "image/gif"], limit: "5mb" }),

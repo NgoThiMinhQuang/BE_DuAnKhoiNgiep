@@ -23,6 +23,7 @@ import {
   hardDeleteAdminProduct,
   hideAdminProduct,
   deleteAdminCategory,
+  deleteAdminArticle,
   deleteAdminUser,
   updateAdminArticle,
   updateAdminCategory,
@@ -596,6 +597,10 @@ export async function changeAdminArticle(articleId, input) {
   const current = (await getAdminArticles()).find((item) => item.id === String(articleId));
   if (!current) throw badRequest("Không tìm thấy bài viết", 404);
   if (!await updateAdminArticle(articleId, normalizeArticle(input, current))) throw badRequest("Không tìm thấy bài viết", 404);
+}
+
+export async function removeAdminArticle(articleId) {
+  if (!await deleteAdminArticle(articleId)) throw badRequest("Không tìm thấy bài viết", 404);
 }
 
 function normalizeSupplier(input, current = null) {

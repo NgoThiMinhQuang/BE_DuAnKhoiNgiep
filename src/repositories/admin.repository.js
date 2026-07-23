@@ -914,6 +914,11 @@ export async function updateAdminArticle(articleId, input) {
   return result.affectedRows > 0;
 }
 
+export async function deleteAdminArticle(articleId) {
+  const [result] = await database.execute("DELETE FROM bai_viet WHERE id=?", [articleId]);
+  return result.affectedRows > 0;
+}
+
 export async function findAdminInventory() {
   const [[products], [suppliers], [imports], [exports]] = await Promise.all([
     database.query(`

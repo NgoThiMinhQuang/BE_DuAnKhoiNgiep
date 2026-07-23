@@ -30,6 +30,7 @@ import {
   getAdminUser,
   getAdminUsers,
   permanentDeleteAdminProduct,
+  removeAdminArticle,
   removeAdminCategory,
   removeAdminProduct,
   removeAdminPromotion,
@@ -82,6 +83,7 @@ export const deletePromotion = action(removeAdminPromotion, { input: null });
 export const listArticles = action(getAdminArticles, { input: null });
 export const createArticle = action(addAdminArticle, { status: 201, admin: true });
 export const updateArticle = action(changeAdminArticle);
+export const deleteArticle = action(removeAdminArticle, { input: null });
 export const showInventory = action(getAdminInventory, { input: null });
 export const createSupplier = action(addAdminSupplier, { status: 201 });
 export const updateSupplier = action(changeAdminSupplier);

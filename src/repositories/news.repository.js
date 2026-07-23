@@ -49,6 +49,16 @@ export async function findNewsStoreSettings() {
   return rows[0] ?? { ten_cua_hang: "Rubeanora", hotline: "", email: "" };
 }
 
+export async function findApprovedArticleComments(articleId) {
+  const [rows] = await database.execute(`
+    SELECT id, ho_ten, noi_dung, ngay_tao
+    FROM binh_luan_bai_viet
+    WHERE bai_viet_id=? AND trang_thai='DA_DUYET'
+    ORDER BY ngay_tao DESC, id DESC
+  `, [articleId]);
+  return rows;
+}
+
 export async function insertArticleComment({ articleId, name, email, content }) {
   const [result] = await database.execute(`
     INSERT INTO binh_luan_bai_viet (bai_viet_id, ho_ten, email, noi_dung)

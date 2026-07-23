@@ -545,6 +545,46 @@ export async function updateAdminReview(reviewId, changes) {
   return result.affectedRows > 0;
 }
 
+export async function findAdminArticleComments({ articleId, status, limit, offset }) {
+  const conditions = [];
+  const values = [];
+  if (articleId) {
+    conditions.push("bl.bai_viet_id=?");
+    values.push(articleId);
+  }
+  if (status) {
+    conditions.push("bl.trang_thai=?");
+    values.push(status);
+  }
+  const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+  const [countRows] = await database.execute(
+    `SELECT COUNT(*) AS total FROM binh_luan_bai_viet bl ${where}`,
+    values,
+  );
+  const [rows] = await database.query(`
+    SELECT bl.id, bl.bai_viet_id, bl.ho_ten, bl.email, bl.noi_dung,
+      bl.trang_thai, bl.ngay_tao, bl.ngay_cap_nhat, bv.tieu_de
+    FROM binh_luan_bai_viet bl
+    INNER JOIN bai_viet bv ON bv.id=bl.bai_viet_id
+    ${where}
+    ORDER BY bl.ngay_tao DESC, bl.id DESC
+    LIMIT ? OFFSET ?
+  `, [...values, limit, offset]);
+  return { rows, total: Number(countRows[0].total) };
+}
+
+export async function updateAdminArticleComment(commentId, status) {
+  const [result] = await database.execute(`
+    UPDATE binh_luan_bai_viet SET trang_thai=? WHERE id=?
+  `, [status, commentId]);
+  return result.affectedRows > 0;
+}
+
+export async function deleteAdminArticleComment(commentId) {
+  const [result] = await database.execute("DELETE FROM binh_luan_bai_viet WHERE id=?", [commentId]);
+  return result.affectedRows > 0;
+}
+
 export async function findAdminContacts({ status, limit, offset }) {
   const where = status ? "WHERE lh.trang_thai=?" : "";
   const values = status ? [status] : [];

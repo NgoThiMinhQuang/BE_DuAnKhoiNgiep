@@ -16,6 +16,7 @@ import {
   findAdminProducts,
   findAdminPromotions,
   findAdminReviews,
+  findAdminArticleComments,
   findAdminSettings,
   findAdminUserById,
   findAdminUsers,
@@ -24,6 +25,7 @@ import {
   hideAdminProduct,
   deleteAdminCategory,
   deleteAdminArticle,
+  deleteAdminArticleComment,
   deleteAdminUser,
   updateAdminArticle,
   updateAdminCategory,
@@ -32,6 +34,7 @@ import {
   updateAdminProduct,
   updateAdminPromotion,
   updateAdminReview,
+  updateAdminArticleComment,
   updateAdminSettings,
   updateAdminSupplier,
   updateAdminUser,
@@ -305,6 +308,42 @@ export async function changeAdminReview(reviewId, input) {
   if (!await updateAdminReview(reviewId, { status: input.status, reply: input.reply?.trim() })) {
     throw badRequest("Không tìm thấy đánh giá", 404);
   }
+}
+
+export async function getAdminArticleComments(query) {
+  const options = pageOptions(query);
+  if (query.status && !["CHO_DUYET", "DA_DUYET", "TU_CHOI"].includes(query.status)) {
+    throw badRequest("Trạng thái bình luận không hợp lệ");
+  }
+  const result = await findAdminArticleComments({
+    articleId: query.articleId,
+    status: query.status,
+    ...options,
+  });
+  return paged(result.rows.map((item) => ({
+    id: String(item.id),
+    articleId: String(item.bai_viet_id),
+    articleTitle: item.tieu_de,
+    name: item.ho_ten,
+    email: item.email,
+    content: item.noi_dung,
+    status: item.trang_thai,
+    createdAt: item.ngay_tao,
+    updatedAt: item.ngay_cap_nhat,
+  })), options.page, options.limit, result.total);
+}
+
+export async function changeAdminArticleComment(commentId, input) {
+  if (!["CHO_DUYET", "DA_DUYET", "TU_CHOI"].includes(input.status)) {
+    throw badRequest("Trạng thái bình luận không hợp lệ");
+  }
+  if (!await updateAdminArticleComment(commentId, input.status)) {
+    throw badRequest("Không tìm thấy bình luận", 404);
+  }
+}
+
+export async function removeAdminArticleComment(commentId) {
+  if (!await deleteAdminArticleComment(commentId)) throw badRequest("Không tìm thấy bình luận", 404);
 }
 
 export async function getAdminContacts(query) {

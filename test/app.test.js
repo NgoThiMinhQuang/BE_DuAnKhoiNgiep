@@ -50,6 +50,16 @@ test("API liên hệ kiểm tra email và nội dung", async () => {
   assert.equal(response.body.success, false);
 });
 
+test("API bình luận bài viết kiểm tra dữ liệu đầu vào trước khi ghi cơ sở dữ liệu", async () => {
+  const response = await request(app)
+    .post("/api/news/1/comments")
+    .send({ name: "Khách thử", email: "email-sai", content: "Nội dung bình luận" })
+    .expect(400);
+
+  assert.equal(response.body.success, false);
+  assert.match(response.body.message, /Email/);
+});
+
 test("API quên mật khẩu kiểm tra định dạng email", async () => {
   const response = await request(app)
     .post("/api/auth/forgot-password")

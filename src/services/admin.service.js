@@ -299,7 +299,8 @@ export async function getAdminReviews(query) {
     id: String(item.id), userId: String(item.nguoi_dung_id), userName: item.ho_ten,
     email: item.email, productId: String(item.san_pham_id), productName: item.ten_san_pham,
     productCode: item.ma_san_pham, rating: Number(item.so_sao), content: item.noi_dung,
-    reply: item.phan_hoi_admin, status: item.trang_thai, createdAt: item.ngay_tao,
+    orderCode: item.ma_don_hang, reply: item.phan_hoi_admin,
+    status: item.trang_thai, createdAt: item.ngay_tao,
   })), options.page, options.limit, result.total);
 }
 

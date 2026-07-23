@@ -524,10 +524,13 @@ export async function findAdminReviews({ status, limit, offset }) {
   const values = status ? [status] : [];
   const [countRows] = await database.execute(`SELECT COUNT(*) AS total FROM danh_gia dg ${where}`, values);
   const [rows] = await database.query(`
-    SELECT dg.*, nd.ho_ten, nd.email, sp.ten_san_pham, sp.ma_san_pham
+    SELECT dg.*, nd.ho_ten, nd.email, sp.ten_san_pham, sp.ma_san_pham,
+      dh.ma_don_hang
     FROM danh_gia dg
     INNER JOIN nguoi_dung nd ON nd.id=dg.nguoi_dung_id
     INNER JOIN san_pham sp ON sp.id=dg.san_pham_id
+    LEFT JOIN chi_tiet_don_hang ctdh ON ctdh.id=dg.chi_tiet_don_hang_id
+    LEFT JOIN don_hang dh ON dh.id=ctdh.don_hang_id
     ${where}
     ORDER BY dg.ngay_tao DESC
     LIMIT ? OFFSET ?

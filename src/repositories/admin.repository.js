@@ -1,4 +1,5 @@
 import { database } from "../config/database.js";
+import { calculateWeightedAverageCost } from "../domain/inventory.js";
 
 const dashboardPeriods = {
   week: {
@@ -117,7 +118,8 @@ export async function findDashboardData() {
           WHERE trang_thai_don_hang='DA_GIAO'
             AND YEAR(ngay_tao)=YEAR(CURDATE()) AND MONTH(ngay_tao)=MONTH(CURDATE())) AS monthly_revenue,
         (SELECT COUNT(*) FROM nguoi_dung WHERE vai_tro='KHACH_HANG') AS customers,
-        (SELECT COUNT(*) FROM san_pham WHERE so_luong_ton<=ton_toi_thieu) AS low_stock_products,
+        (SELECT COUNT(*) FROM san_pham
+          WHERE trang_thai<>'NGUNG_BAN' AND (so_luong_ton-so_luong_giu_cho)<=ton_toi_thieu) AS low_stock_products,
         (SELECT COUNT(*) FROM danh_gia WHERE trang_thai='CHO_DUYET') AS pending_reviews,
         (SELECT COUNT(*) FROM lien_he WHERE trang_thai='MOI') AS new_contacts
     `),
@@ -127,10 +129,11 @@ export async function findDashboardData() {
       FROM don_hang ORDER BY ngay_tao DESC LIMIT 8
     `),
     database.query(`
-      SELECT id, ma_san_pham, ma_sku, ten_san_pham, so_luong_ton, ton_toi_thieu
+      SELECT id, ma_san_pham, ma_sku, ten_san_pham,
+        (so_luong_ton-so_luong_giu_cho) AS so_luong_ton, ton_toi_thieu
       FROM san_pham
-      WHERE so_luong_ton<=ton_toi_thieu
-      ORDER BY so_luong_ton ASC, id LIMIT 8
+      WHERE trang_thai<>'NGUNG_BAN' AND (so_luong_ton-so_luong_giu_cho)<=ton_toi_thieu
+      ORDER BY (so_luong_ton-so_luong_giu_cho) ASC, id LIMIT 8
     `),
     Promise.all(Object.keys(dashboardPeriods).map(async (period) => [
       period,
@@ -213,9 +216,11 @@ export async function updateAdminOrderInTransaction(orderId, changes) {
     const nextStatus = changes.orderStatus ?? order.trang_thai_don_hang;
     let nextPaymentStatus = order.trang_thai_thanh_toan;
     const [orderItems] = await connection.execute(`
-      SELECT san_pham_id, so_luong, don_gia, thanh_tien
-      FROM chi_tiet_don_hang
-      WHERE don_hang_id=? AND san_pham_id IS NOT NULL
+      SELECT ctdh.san_pham_id, ctdh.so_luong, ctdh.don_gia, ctdh.thanh_tien,
+        COALESCE(sp.gia_von, 0) AS gia_von
+      FROM chi_tiet_don_hang ctdh
+      LEFT JOIN san_pham sp ON sp.id=ctdh.san_pham_id
+      WHERE ctdh.don_hang_id=? AND ctdh.san_pham_id IS NOT NULL
       FOR UPDATE
     `, [order.id]);
     if (nextStatus === "DA_HUY" && order.trang_thai_don_hang !== "DA_HUY") {
@@ -307,18 +312,23 @@ export async function updateAdminOrderInTransaction(orderId, changes) {
     }
 
     if (nextStatus === "DA_XAC_NHAN" && order.trang_thai_don_hang === "CHO_XAC_NHAN") {
+      const exportValue = orderItems.reduce(
+        (total, item) => total + (Number(item.so_luong) * Number(item.gia_von)),
+        0,
+      );
       const [exportResult] = await connection.execute(`
         INSERT INTO phieu_xuat (
           ma_phieu_xuat, don_hang_id, nguoi_tao_id, loai_xuat,
           nguoi_nhan, tong_gia_tri, ghi_chu, trang_thai
         ) VALUES (?, ?, NULL, 'BAN_HANG', ?, ?, ?, 'NHAP_TAM')
-      `, [`PX-${order.ma_don_hang}`, order.id, order.ten_nguoi_nhan, order.tong_tien_hang, `Phiếu xuất nháp cho đơn ${order.ma_don_hang}`]);
+      `, [`PX-${order.ma_don_hang}`, order.id, order.ten_nguoi_nhan, exportValue, `Phiếu xuất nháp cho đơn ${order.ma_don_hang}`]);
       for (const item of orderItems) {
+        const lineValue = Number(item.so_luong) * Number(item.gia_von);
         await connection.execute(`
           INSERT INTO chi_tiet_phieu_xuat (
             phieu_xuat_id, san_pham_id, so_luong, don_gia_xuat, thanh_tien
           ) VALUES (?, ?, ?, ?, ?)
-        `, [exportResult.insertId, item.san_pham_id, item.so_luong, item.don_gia, item.thanh_tien]);
+        `, [exportResult.insertId, item.san_pham_id, item.so_luong, item.gia_von, lineValue]);
       }
     }
 
@@ -963,14 +973,17 @@ export async function deleteAdminArticle(articleId) {
 }
 
 export async function findAdminInventory() {
-  const [[products], [suppliers], [imports], [exports]] = await Promise.all([
+  const [[products], [suppliers], [imports], [exports], [importItems], [exportItems]] = await Promise.all([
     database.query(`
-      SELECT id, ma_san_pham, ma_sku, ten_san_pham, anh_chinh_url,
-        so_luong_ton, so_luong_giu_cho, (so_luong_ton-so_luong_giu_cho) AS so_luong_kha_dung,
-        ton_toi_thieu, gia_von, trang_thai
-      FROM san_pham 
-      WHERE trang_thai != 'NGUNG_BAN'
-      ORDER BY so_luong_ton ASC, ten_san_pham
+      SELECT sp.id, sp.ma_san_pham, sp.ma_sku, sp.ten_san_pham, sp.anh_chinh_url,
+        sp.quy_cach, sp.so_luong_ton, sp.so_luong_giu_cho,
+        (sp.so_luong_ton-sp.so_luong_giu_cho) AS so_luong_kha_dung,
+        sp.ton_toi_thieu, sp.gia_von, sp.trang_thai, sp.ngay_cap_nhat,
+        dm.ten_danh_muc, dm.duong_dan AS danh_muc_duong_dan
+      FROM san_pham sp
+      LEFT JOIN danh_muc_san_pham dm ON dm.id=sp.danh_muc_id
+      WHERE sp.trang_thai != 'NGUNG_BAN'
+      ORDER BY sp.so_luong_ton ASC, sp.ten_san_pham
     `),
     database.query(`
       SELECT * FROM nha_cung_cap ORDER BY trang_thai, ten_nha_cung_cap
@@ -983,19 +996,42 @@ export async function findAdminInventory() {
       LEFT JOIN nguoi_dung nd ON nd.id=pn.nguoi_tao_id
       LEFT JOIN chi_tiet_phieu_nhap ctpn ON ctpn.phieu_nhap_id=pn.id
       GROUP BY pn.id, ncc.id, nd.id
-      ORDER BY pn.ngay_nhap DESC LIMIT 100
+      ORDER BY pn.ngay_nhap DESC, pn.id DESC LIMIT 100
     `),
     database.query(`
-      SELECT px.*, nd.ho_ten AS nguoi_tao,
+      SELECT px.*, nd.ho_ten AS nguoi_tao, dh.ma_don_hang,
         COALESCE(SUM(ctpx.so_luong), 0) AS tong_so_luong
       FROM phieu_xuat px
       LEFT JOIN nguoi_dung nd ON nd.id=px.nguoi_tao_id
+      LEFT JOIN don_hang dh ON dh.id=px.don_hang_id
       LEFT JOIN chi_tiet_phieu_xuat ctpx ON ctpx.phieu_xuat_id=px.id
-      GROUP BY px.id, nd.id
-      ORDER BY px.ngay_xuat DESC LIMIT 100
+      GROUP BY px.id, nd.id, dh.id
+      ORDER BY px.ngay_xuat DESC, px.id DESC LIMIT 100
+    `),
+    database.query(`
+      SELECT ctpn.phieu_nhap_id AS phieu_id, ctpn.san_pham_id,
+        ctpn.so_luong, ctpn.don_gia_nhap AS don_gia, ctpn.thanh_tien,
+        sp.ma_sku, sp.ten_san_pham, sp.anh_chinh_url, sp.quy_cach
+      FROM chi_tiet_phieu_nhap ctpn
+      INNER JOIN (
+        SELECT id FROM phieu_nhap ORDER BY ngay_nhap DESC, id DESC LIMIT 100
+      ) recent ON recent.id=ctpn.phieu_nhap_id
+      LEFT JOIN san_pham sp ON sp.id=ctpn.san_pham_id
+      ORDER BY ctpn.phieu_nhap_id, ctpn.id
+    `),
+    database.query(`
+      SELECT ctpx.phieu_xuat_id AS phieu_id, ctpx.san_pham_id,
+        ctpx.so_luong, ctpx.don_gia_xuat AS don_gia, ctpx.thanh_tien,
+        sp.ma_sku, sp.ten_san_pham, sp.anh_chinh_url, sp.quy_cach
+      FROM chi_tiet_phieu_xuat ctpx
+      INNER JOIN (
+        SELECT id FROM phieu_xuat ORDER BY ngay_xuat DESC, id DESC LIMIT 100
+      ) recent ON recent.id=ctpx.phieu_xuat_id
+      LEFT JOIN san_pham sp ON sp.id=ctpx.san_pham_id
+      ORDER BY ctpx.phieu_xuat_id, ctpx.id
     `),
   ]);
-  return { products, suppliers, imports, exports };
+  return { products, suppliers, imports, exports, importItems, exportItems };
 }
 
 export async function createAdminSupplier(input) {
@@ -1028,9 +1064,19 @@ export async function createAdminImport(adminId, input) {
   const connection = await database.getConnection();
   try {
     await connection.beginTransaction();
+    const [supplierRows] = await connection.execute(`
+      SELECT id FROM nha_cung_cap
+      WHERE id=? AND trang_thai='HOAT_DONG'
+      FOR UPDATE
+    `, [input.supplierId]);
+    if (!supplierRows[0]) {
+      const error = new Error("Nhà cung cấp không tồn tại hoặc đã ngừng hợp tác");
+      error.statusCode = 400;
+      throw error;
+    }
     const productIds = input.items.map((item) => item.productId);
     const [products] = await connection.query(`
-      SELECT id FROM san_pham
+      SELECT id, so_luong_ton, gia_von FROM san_pham
       WHERE id IN (?) FOR UPDATE
     `, [productIds]);
     if (products.length !== productIds.length) {
@@ -1045,7 +1091,16 @@ export async function createAdminImport(adminId, input) {
         ngay_nhap, tong_tien, ghi_chu, trang_thai
       ) VALUES (?, ?, ?, ?, ?, ?, 'DA_HOAN_THANH')
     `, [input.code, input.supplierId, adminId, input.date, total, input.note]);
+    const productMap = new Map(products.map((item) => [Number(item.id), item]));
     for (const item of input.items) {
+      const product = productMap.get(item.productId);
+      const nextStock = Number(product.so_luong_ton) + item.quantity;
+      const nextCost = calculateWeightedAverageCost(
+        product.so_luong_ton,
+        product.gia_von,
+        item.quantity,
+        item.unitPrice,
+      );
       await connection.execute(`
         INSERT INTO chi_tiet_phieu_nhap (
           phieu_nhap_id, san_pham_id, so_luong, don_gia_nhap, thanh_tien
@@ -1053,9 +1108,9 @@ export async function createAdminImport(adminId, input) {
       `, [result.insertId, item.productId, item.quantity, item.unitPrice, item.quantity * item.unitPrice]);
       await connection.execute(`
         UPDATE san_pham
-        SET so_luong_ton=so_luong_ton+?, gia_von=?
+        SET so_luong_ton=?, gia_von=?
         WHERE id=?
-      `, [item.quantity, item.unitPrice, item.productId]);
+      `, [nextStock, nextCost, item.productId]);
     }
     await connection.commit();
     return { id: result.insertId, total };
@@ -1090,7 +1145,7 @@ export async function createAdminExport(adminId, input) {
     }
     const total = input.items.reduce((sum, item) => {
       const product = productMap.get(item.productId);
-      return sum + item.quantity * Number(item.unitPrice ?? product.gia_von);
+      return sum + item.quantity * Number(product.gia_von);
     }, 0);
     const [result] = await connection.execute(`
       INSERT INTO phieu_xuat (
@@ -1100,7 +1155,7 @@ export async function createAdminExport(adminId, input) {
     `, [input.code, adminId, input.type, input.date, input.recipient, total, input.note]);
     for (const item of input.items) {
       const product = productMap.get(item.productId);
-      const unitPrice = Number(item.unitPrice ?? product.gia_von);
+      const unitPrice = Number(product.gia_von);
       await connection.execute(`
         INSERT INTO chi_tiet_phieu_xuat (
           phieu_xuat_id, san_pham_id, so_luong, don_gia_xuat, thanh_tien

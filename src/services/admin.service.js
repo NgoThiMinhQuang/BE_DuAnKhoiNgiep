@@ -671,13 +671,12 @@ function normalizeSupplier(input, current = null) {
   };
 }
 
-function normalizeVoucherItems(items, allowUnitPriceOptional = false) {
+function normalizeVoucherItems(items, useSystemCost = false) {
   if (!Array.isArray(items) || !items.length) throw badRequest("Phiếu kho phải có ít nhất một sản phẩm");
   const normalized = items.map((item) => ({
     productId: integerValue(item.productId, "Sản phẩm", 1),
     quantity: integerValue(item.quantity, "Số lượng", 1),
-    unitPrice: allowUnitPriceOptional && item.unitPrice == null
-      ? null : numberValue(item.unitPrice, "Đơn giá"),
+    unitPrice: useSystemCost ? null : numberValue(item.unitPrice, "Đơn giá"),
   }));
   if (new Set(normalized.map((item) => item.productId)).size !== normalized.length) {
     throw badRequest("Một sản phẩm không được lặp lại trong cùng phiếu kho");
@@ -687,15 +686,46 @@ function normalizeVoucherItems(items, allowUnitPriceOptional = false) {
 
 function createVoucherCode(prefix) {
   const date = new Date().toISOString().slice(2, 10).replaceAll("-", "");
-  return `${prefix}-${date}-${String(Date.now()).slice(-6)}`;
+  const uniquePart = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`.toUpperCase();
+  return `${prefix}-${date}-${uniquePart}`;
+}
+
+function normalizeVoucherDate(value) {
+  if (value == null || value === "") return new Date();
+  const text = String(value).trim();
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(text) ? new Date(`${text}T00:00:00`) : new Date(text);
+  if (Number.isNaN(date.getTime())) throw badRequest("Ngày lập phiếu không hợp lệ");
+  const tomorrow = new Date();
+  tomorrow.setHours(24, 0, 0, 0);
+  if (date >= tomorrow) throw badRequest("Không thể lập phiếu kho cho ngày trong tương lai");
+  return value;
+}
+
+function voucherItemsById(rows) {
+  const grouped = new Map();
+  for (const item of rows) {
+    const voucherId = String(item.phieu_id);
+    if (!grouped.has(voucherId)) grouped.set(voucherId, []);
+    grouped.get(voucherId).push({
+      productId: String(item.san_pham_id), sku: item.ma_sku,
+      productName: item.ten_san_pham, image: item.anh_chinh_url,
+      unit: item.quy_cach || "Sản phẩm", quantity: Number(item.so_luong),
+      unitCost: Number(item.don_gia), total: Number(item.thanh_tien),
+    });
+  }
+  return grouped;
 }
 
 export async function getAdminInventory() {
   const data = await findAdminInventory();
+  const importItems = voucherItemsById(data.importItems);
+  const exportItems = voucherItemsById(data.exportItems);
   return {
     products: data.products.map((item) => ({
       id: String(item.id), productCode: item.ma_san_pham, sku: item.ma_sku,
       name: item.ten_san_pham, image: item.anh_chinh_url,
+      category: item.ten_danh_muc, categorySlug: item.danh_muc_duong_dan,
+      unit: item.quy_cach || "Sản phẩm", updatedAt: item.ngay_cap_nhat,
       stock: Number(item.so_luong_ton), reservedStock: Number(item.so_luong_giu_cho),
       availableStock: Number(item.so_luong_kha_dung), minimumStock: Number(item.ton_toi_thieu),
       costPrice: Number(item.gia_von), status: item.trang_thai,
@@ -711,13 +741,16 @@ export async function getAdminInventory() {
       supplierId: String(item.nha_cung_cap_id), supplierName: item.ten_nha_cung_cap,
       createdBy: item.nguoi_tao, date: item.ngay_nhap, total: Number(item.tong_tien),
       quantity: Number(item.tong_so_luong), note: item.ghi_chu, status: item.trang_thai,
+      items: importItems.get(String(item.id)) ?? [],
     })),
     exports: data.exports.map((item) => ({
       id: String(item.id), code: item.ma_phieu_xuat,
       orderId: item.don_hang_id == null ? null : String(item.don_hang_id),
+      orderCode: item.ma_don_hang,
       type: item.loai_xuat, recipient: item.nguoi_nhan, createdBy: item.nguoi_tao,
       date: item.ngay_xuat, total: Number(item.tong_gia_tri),
       quantity: Number(item.tong_so_luong), note: item.ghi_chu, status: item.trang_thai,
+      items: exportItems.get(String(item.id)) ?? [],
     })),
   };
 }
@@ -734,9 +767,9 @@ export async function changeAdminSupplier(supplierId, input) {
 
 export async function addAdminImport(adminId, input) {
   const normalized = {
-    code: input.code?.trim() || createVoucherCode("PN"),
+    code: createVoucherCode("PN"),
     supplierId: integerValue(input.supplierId, "Nhà cung cấp", 1),
-    date: input.date ?? new Date(), note: input.note?.trim() || null,
+    date: normalizeVoucherDate(input.date), note: input.note?.trim() || null,
     items: normalizeVoucherItems(input.items),
   };
   const result = await createAdminImport(adminId, normalized);
@@ -744,12 +777,12 @@ export async function addAdminImport(adminId, input) {
 }
 
 export async function addAdminExport(adminId, input) {
-  const type = input.type ?? "XUAT_KHAC";
+  const type = input.type;
   if (!['XUAT_HUY', 'XUAT_KHAC'].includes(type)) throw badRequest("Loại phiếu xuất thủ công không hợp lệ");
   const normalized = {
-    code: input.code?.trim() || createVoucherCode("PX"), type,
-    date: input.date ?? new Date(), recipient: input.recipient?.trim() || null,
-    note: input.note?.trim() || null,
+    code: createVoucherCode("PX"), type,
+    date: normalizeVoucherDate(input.date), recipient: requiredText(input.recipient, "Bộ phận hoặc nơi nhận"),
+    note: requiredText(input.note, "Lý do xuất kho"),
     items: normalizeVoucherItems(input.items, true),
   };
   const result = await createAdminExport(adminId, normalized);

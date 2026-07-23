@@ -9,7 +9,7 @@
     "dev": "node --watch src/server.js",
     "prestart": "node scripts/migrate.js",
     "start": "node src/server.js",
-    "test": "node --test test/app.test.js test/authentication.test.js test/chatbot.test.js test/environment.test.js",
+    "test": "node --test test/app.test.js test/authentication.test.js test/chatbot.test.js test/environment.test.js test/inventory.test.js",
     "check": "node --check src/server.js && node --check src/app.js",
     "migrate": "node scripts/migrate.js"
   },

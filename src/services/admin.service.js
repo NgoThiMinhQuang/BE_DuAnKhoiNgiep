@@ -39,6 +39,7 @@ import {
   updateAdminSupplier,
   updateAdminUser,
 } from "../repositories/admin.repository.js";
+import { calculateProfitability } from "../domain/profitability.js";
 
 const badRequest = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
 const storedImageUrl = (value, field) => {
@@ -112,14 +113,26 @@ function percentageChange(current, previous) {
   return Math.round(((current - previous) / previous) * 1000) / 10;
 }
 
+function signedPercentageChange(current, previous) {
+  if (previous === 0) return current === 0 ? 0 : current > 0 ? 100 : -100;
+  return Math.round(((current - previous) / Math.abs(previous)) * 1000) / 10;
+}
+
 function mapDashboardPeriod(period) {
-  const current = numberFields(period.current);
-  const previous = numberFields(period.previous);
+  const currentValues = numberFields(period.current);
+  const previousValues = numberFields(period.previous);
+  const { net_revenue: currentNetRevenue, cost_of_goods_sold: currentCost, ...currentBase } = currentValues;
+  const { net_revenue: previousNetRevenue, cost_of_goods_sold: previousCost, ...previousBase } = previousValues;
+  const current = { ...currentBase, ...calculateProfitability(currentNetRevenue, currentCost) };
+  const previous = { ...previousBase, ...calculateProfitability(previousNetRevenue, previousCost) };
   return {
     stats: current,
     previousStats: previous,
     changes: {
       revenue: percentageChange(current.revenue, previous.revenue),
+      netRevenue: percentageChange(current.netRevenue, previous.netRevenue),
+      costOfGoodsSold: percentageChange(current.costOfGoodsSold, previous.costOfGoodsSold),
+      grossProfit: signedPercentageChange(current.grossProfit, previous.grossProfit),
       orders: percentageChange(current.orders, previous.orders),
       customers: percentageChange(current.customers, previous.customers),
       unitsSold: percentageChange(current.units_sold, previous.units_sold),
@@ -127,6 +140,7 @@ function mapDashboardPeriod(period) {
     revenueSeries: period.revenueSeries.map((item) => ({
       bucket: Number(item.bucket),
       revenue: Number(item.revenue),
+      ...calculateProfitability(item.net_revenue, item.cost_of_goods_sold),
     })),
     orderStatus: numberFields(period.orderStatus),
     bestSellingProducts: period.bestSellingProducts.map((item) => ({

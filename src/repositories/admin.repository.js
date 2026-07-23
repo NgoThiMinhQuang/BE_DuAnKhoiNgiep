@@ -38,6 +38,14 @@ async function findDashboardPeriodData(period) {
     SELECT
       (SELECT COALESCE(SUM(dh.tong_thanh_toan), 0) FROM don_hang dh
         WHERE ${orderCondition} AND dh.trang_thai_don_hang='DA_GIAO') AS revenue,
+      (SELECT COALESCE(SUM(GREATEST(dh.tong_tien_hang-dh.tien_giam, 0)), 0) FROM don_hang dh
+        WHERE ${orderCondition} AND dh.trang_thai_don_hang='DA_GIAO') AS net_revenue,
+      (SELECT COALESCE(SUM(ctpx.thanh_tien), 0)
+        FROM don_hang dh
+        INNER JOIN phieu_xuat px ON px.don_hang_id=dh.id
+          AND px.loai_xuat='BAN_HANG' AND px.trang_thai='DA_HOAN_THANH'
+        INNER JOIN chi_tiet_phieu_xuat ctpx ON ctpx.phieu_xuat_id=px.id
+        WHERE ${orderCondition} AND dh.trang_thai_don_hang='DA_GIAO') AS cost_of_goods_sold,
       (SELECT COUNT(*) FROM don_hang dh WHERE ${orderCondition}) AS orders,
       (SELECT COUNT(*) FROM nguoi_dung nd
         WHERE ${userCondition} AND nd.vai_tro='KHACH_HANG') AS customers,
@@ -58,8 +66,18 @@ async function findDashboardPeriodData(period) {
     database.query(statsQuery(definition.orderCurrent, definition.userCurrent)),
     database.query(statsQuery(definition.orderPrevious, definition.userPrevious)),
     database.query(`
-      SELECT ${definition.bucket} AS bucket, COALESCE(SUM(dh.tong_thanh_toan), 0) AS revenue
+      SELECT ${definition.bucket} AS bucket,
+        COALESCE(SUM(dh.tong_thanh_toan), 0) AS revenue,
+        COALESCE(SUM(GREATEST(dh.tong_tien_hang-dh.tien_giam, 0)), 0) AS net_revenue,
+        COALESCE(SUM(costs.cost_of_goods_sold), 0) AS cost_of_goods_sold
       FROM don_hang dh
+      LEFT JOIN (
+        SELECT px.don_hang_id, SUM(ctpx.thanh_tien) AS cost_of_goods_sold
+        FROM phieu_xuat px
+        INNER JOIN chi_tiet_phieu_xuat ctpx ON ctpx.phieu_xuat_id=px.id
+        WHERE px.loai_xuat='BAN_HANG' AND px.trang_thai='DA_HOAN_THANH'
+        GROUP BY px.don_hang_id
+      ) costs ON costs.don_hang_id=dh.id
       WHERE ${definition.orderCurrent} AND dh.trang_thai_don_hang='DA_GIAO'
       GROUP BY bucket
       ORDER BY bucket

@@ -38,7 +38,12 @@ export async function login(request, response, next) {
 }
 
 export async function googleLogin(request, response, next) {
-  try { response.json({ success: true, data: await googleLoginCustomer(request.body.credential) }); }
+  try {
+    response.json({
+      success: true,
+      data: await googleLoginCustomer(request.body.credential, request.body.remember === true),
+    });
+  }
   catch (error) { next(error); }
 }
 

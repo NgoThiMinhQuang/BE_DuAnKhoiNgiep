@@ -82,10 +82,10 @@ export async function loginCustomer(input) {
   const row = await findUserByEmail(email);
   if (!row || !verifyPassword(input.password, row.mat_khau_hash)) throw badRequest("Email hoặc mật khẩu không chính xác", 401);
   if (row.trang_thai !== "HOAT_DONG") throw badRequest("Tài khoản đã bị khóa", 403);
-  return { token: createAccessToken(row.id), user: await mapUser(row) };
+  return { token: createAccessToken(row.id, input.remember === true), user: await mapUser(row) };
 }
 
-export async function googleLoginCustomer(credential) {
+export async function googleLoginCustomer(credential, remember = false) {
   if (!env.googleClientId) throw badRequest("Đăng nhập Google chưa được cấu hình", 503);
   if (!credential) throw badRequest("Thiếu thông tin xác thực Google");
   let payload;
@@ -110,7 +110,7 @@ export async function googleLoginCustomer(credential) {
     row = await findUserById(row.id);
   }
   if (row.trang_thai !== "HOAT_DONG") throw badRequest("Tài khoản đã bị khóa", 403);
-  return { token: createAccessToken(row.id), user: await mapUser(row) };
+  return { token: createAccessToken(row.id, remember), user: await mapUser(row) };
 }
 
 export async function requestPasswordReset(emailInput) {

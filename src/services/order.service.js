@@ -5,6 +5,7 @@ import {
 } from "../repositories/order.repository.js";
 import { createSePayPaymentCode } from "./payment.service.js";
 import { notifyAdmins, notifyUser } from "./notification.service.js";
+import { sendAdminNewOrderEmail, sendCustomerOrderConfirmationEmail } from "./mail.service.js";
 
 const statusMap = {
   CHO_XAC_NHAN: "CHO_XAC_NHAN", DA_XAC_NHAN: "DA_XAC_NHAN", DANG_CHUAN_BI: "DANG_DONG_GOI",
@@ -13,6 +14,21 @@ const statusMap = {
 const badRequest = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
 
 const paymentMethods = new Set(["COD", "CHUYEN_KHOAN"]);
+
+async function sendOrderEmails(result) {
+  const context = result.emailContext;
+  if (!context) return;
+  const order = { orderCode: result.orderCode, summary: result.summary, ...context };
+  const jobs = [];
+  if (context.sendCustomerConfirmation && context.customerEmail) {
+    jobs.push(sendCustomerOrderConfirmationEmail(order));
+  }
+  if (context.adminEmail) jobs.push(sendAdminNewOrderEmail(order));
+  const outcomes = await Promise.allSettled(jobs);
+  for (const outcome of outcomes) {
+    if (outcome.status === "rejected") console.error("Không thể gửi email đơn hàng:", outcome.reason?.message ?? outcome.reason);
+  }
+}
 
 function normalizeProductIds(values) {
   if (!Array.isArray(values)) throw badRequest("Danh sách sản phẩm không hợp lệ");
@@ -147,6 +163,9 @@ export async function createCustomerOrder(userId, input) {
       tag: `admin-order-${result.id}`,
     }),
   ]);
+  void sendOrderEmails(result).catch((error) => {
+    console.error("Không thể xử lý email đơn hàng:", error.message);
+  });
   return {
     id: String(result.id),
     orderCode: result.orderCode,

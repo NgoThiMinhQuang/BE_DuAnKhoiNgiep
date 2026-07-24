@@ -154,6 +154,11 @@ export async function createOrderInTransaction(userId, productIds, input, calcul
   const connection = await database.getConnection();
   try {
     await connection.beginTransaction();
+    const [customers] = await connection.execute(
+      "SELECT ho_ten, email FROM nguoi_dung WHERE id=? LIMIT 1",
+      [userId],
+    );
+    const customer = customers[0] ?? null;
     const [items] = await connection.query(`
       SELECT sp.id, sp.ma_san_pham, sp.ten_san_pham, sp.anh_chinh_url, sp.quy_cach,
         sp.gia_ban, (sp.so_luong_ton-sp.so_luong_giu_cho) AS so_luong_ton, sp.trang_thai, ctgh.so_luong, gh.id AS gio_hang_id
@@ -202,7 +207,7 @@ export async function createOrderInTransaction(userId, productIds, input, calcul
         phuong_thuc_thanh_toan, trang_thai_thanh_toan, trang_thai_don_hang, ghi_chu_khach_hang
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'CHUA_THANH_TOAN', 'CHO_XAC_NHAN', ?)
     `, [
-      orderCode, userId, summary.promotion?.id ?? null, shipping.name, shipping.phone, input.email ?? null,
+      orderCode, userId, summary.promotion?.id ?? null, shipping.name, shipping.phone, customer?.email ?? null,
       shipping.province, shipping.provinceCode ?? null, shipping.district, shipping.ward, shipping.wardCode ?? null, shipping.detail,
       summary.subtotal, summary.discountAmount, summary.shippingFee, summary.totalPayment,
       input.paymentMethod, input.customerNote || null,
@@ -242,7 +247,24 @@ export async function createOrderInTransaction(userId, productIds, input, calcul
       await connection.execute("INSERT INTO lich_su_su_dung_khuyen_mai (khuyen_mai_id, nguoi_dung_id, don_hang_id) VALUES (?, ?, ?)", [summary.promotion.id, userId, orderResult.insertId]);
     }
     await connection.commit();
-    return { id: orderResult.insertId, orderCode, summary };
+    return {
+      id: orderResult.insertId,
+      orderCode,
+      summary,
+      emailContext: {
+        customerEmail: customer?.email ?? null,
+        customerName: customer?.ho_ten || shipping.name,
+        adminEmail: storeSettings.email_thong_bao ?? null,
+        sendCustomerConfirmation: Boolean(storeSettings.gui_email_xac_nhan),
+        storeName: storeSettings.ten_cua_hang || "Rubeanora",
+        paymentMethod: input.paymentMethod,
+        items: items.map((item) => ({
+          name: item.ten_san_pham,
+          quantity: Number(item.so_luong),
+          price: Number(item.gia_ban),
+        })),
+      },
+    };
   } catch (error) {
     await connection.rollback();
     throw error;

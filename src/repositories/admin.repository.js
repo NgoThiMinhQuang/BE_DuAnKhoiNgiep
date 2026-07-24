@@ -653,9 +653,10 @@ export async function updateAdminSettings(changes) {
     UPDATE cau_hinh_cua_hang SET
       ten_cua_hang=?, logo_url=?, mo_ta=?, hotline=?, email=?, dia_chi=?,
       gio_lam_viec=?, phi_van_chuyen=?, nguong_mien_phi_van_chuyen=?,
-      facebook_url=?, instagram_url=?, tiktok_url=?, ten_phap_ly=?, email_ho_tro=?,
+      facebook_url=?, bat_facebook=?, instagram_url=?, bat_instagram=?,
+      tiktok_url=?, bat_tiktok=?, ten_phap_ly=?, email_ho_tro=?,
       google_maps_url=?, tien_to_don_hang=?, bat_cod=?, bat_chuyen_khoan=?, youtube_url=?,
-      email_thong_bao=?, nguong_canh_bao_kho=?, gui_email_xac_nhan=?, che_do_bao_tri=?
+      bat_youtube=?, email_thong_bao=?, nguong_canh_bao_kho=?, gui_email_xac_nhan=?, che_do_bao_tri=?
     WHERE id=?
   `, [
     changes.storeName ?? rows.ten_cua_hang,
@@ -668,8 +669,11 @@ export async function updateAdminSettings(changes) {
     changes.shippingFee ?? rows.phi_van_chuyen,
     changes.freeShippingThreshold ?? rows.nguong_mien_phi_van_chuyen,
     changes.facebookUrl ?? rows.facebook_url,
+    changes.facebookEnabled == null ? rows.bat_facebook : Number(Boolean(changes.facebookEnabled)),
     changes.instagramUrl ?? rows.instagram_url,
+    changes.instagramEnabled == null ? rows.bat_instagram : Number(Boolean(changes.instagramEnabled)),
     changes.tiktokUrl ?? rows.tiktok_url,
+    changes.tiktokEnabled == null ? rows.bat_tiktok : Number(Boolean(changes.tiktokEnabled)),
     changes.legalName ?? rows.ten_phap_ly,
     changes.supportEmail ?? rows.email_ho_tro,
     changes.mapEmbedUrl ?? rows.google_maps_url,
@@ -677,6 +681,7 @@ export async function updateAdminSettings(changes) {
     changes.codEnabled == null ? rows.bat_cod : Number(Boolean(changes.codEnabled)),
     changes.bankTransferEnabled == null ? rows.bat_chuyen_khoan : Number(Boolean(changes.bankTransferEnabled)),
     changes.youtubeUrl ?? rows.youtube_url,
+    changes.youtubeEnabled == null ? rows.bat_youtube : Number(Boolean(changes.youtubeEnabled)),
     changes.notificationEmail ?? rows.email_thong_bao,
     changes.lowStockThreshold ?? rows.nguong_canh_bao_kho,
     changes.sendOrderConfirmation == null ? rows.gui_email_xac_nhan : Number(Boolean(changes.sendOrderConfirmation)),

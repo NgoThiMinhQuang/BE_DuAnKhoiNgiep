@@ -13,6 +13,7 @@ import {
   deleteArticleComment,
   deleteProduct,
   deletePromotion,
+  deleteReview,
   deleteUser,
   forceDeleteProduct,
   listArticles,
@@ -58,6 +59,7 @@ adminRouter.patch("/users/:id", updateUser);
 adminRouter.delete("/users/:id", deleteUser);
 adminRouter.get("/reviews", listReviews);
 adminRouter.patch("/reviews/:id", updateReview);
+adminRouter.delete("/reviews/:id", deleteReview);
 adminRouter.get("/contacts", listContacts);
 adminRouter.patch("/contacts/:id", updateContact);
 adminRouter.get("/settings", showSettings);

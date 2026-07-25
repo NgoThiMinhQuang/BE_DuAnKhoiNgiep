@@ -34,6 +34,7 @@ import {
   updateAdminProduct,
   updateAdminPromotion,
   updateAdminReview,
+  deleteAdminReview,
   updateAdminArticleComment,
   updateAdminSettings,
   updateAdminSupplier,
@@ -359,6 +360,10 @@ export async function changeAdminReview(reviewId, input) {
   if (!await updateAdminReview(reviewId, { status: input.status, reply: input.reply?.trim() })) {
     throw badRequest("Không tìm thấy đánh giá", 404);
   }
+}
+
+export async function removeAdminReview(reviewId) {
+  if (!await deleteAdminReview(reviewId)) throw badRequest("Không tìm thấy đánh giá", 404);
 }
 
 export async function getAdminArticleComments(query) {

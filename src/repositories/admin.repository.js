@@ -576,6 +576,11 @@ export async function updateAdminReview(reviewId, changes) {
   return result.affectedRows > 0;
 }
 
+export async function deleteAdminReview(reviewId) {
+  const [result] = await database.execute("DELETE FROM danh_gia WHERE id=?", [reviewId]);
+  return result.affectedRows > 0;
+}
+
 export async function findAdminArticleComments({ articleId, status, limit, offset }) {
   const conditions = [];
   const values = [];

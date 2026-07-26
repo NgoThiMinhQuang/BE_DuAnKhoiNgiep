@@ -1,0 +1,57 @@
+name: Schema and integration
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  fresh-database:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -proot"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      NODE_ENV: test
+      PORT: 5000
+      DB_HOST: 127.0.0.1
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: root
+      DB_NAME: rubeanora_store
+      AUTH_SECRET: ci-only-secret-with-at-least-32-characters
+      CORS_ORIGIN: http://localhost:5173
+      FRONTEND_URL: http://localhost:5173
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Create database from canonical snapshot
+        run: mysql -h 127.0.0.1 -uroot -proot < CSDL/CSDL.sql
+      - name: Run all pending migrations
+        run: npm run migrate
+      - name: Unit and integration tests
+        run: npm test
+      - name: Boot backend and verify health endpoint
+        run: |
+          node src/server.js > server.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill $SERVER_PID' EXIT
+          for attempt in {1..20}; do
+            curl --fail http://127.0.0.1:5000/api/health && exit 0
+            sleep 1
+          done
+          cat server.log
+          exit 1

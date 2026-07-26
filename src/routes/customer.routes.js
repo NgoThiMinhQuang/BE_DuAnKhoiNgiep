@@ -6,6 +6,7 @@ import {
   forgotPassword, googleLogin, resetPassword,
   listSupportMessages, markSupportMessagesRead,
   askChatbot, showChatbotHistory,
+  showMyLoyalty,
 } from "../controllers/customer.controller.js";
 import { authenticate } from "../middleware/authenticate.js";
 import { cancelMyOrder, createMyOrder, listMyOrderReviews, listMyOrders, quoteMyCheckout, reviewMyOrder } from "../controllers/order.controller.js";
@@ -45,6 +46,8 @@ customerRouter.get("/me/wishlist", showMyWishlist);
 customerRouter.post("/me/wishlist/items", addMyWishlistItem);
 customerRouter.delete("/me/wishlist/items/:productId", removeMyWishlistItem);
 customerRouter.get("/me/orders", listMyOrders);
+customerRouter.get("/me/loyalty", showMyLoyalty);
+customerRouter.get("/me/coins/transactions", showMyLoyalty);
 customerRouter.post("/me/checkout/quote", quoteMyCheckout);
 customerRouter.post("/me/orders", createMyOrder);
 customerRouter.get("/me/orders/:id/payment", showMyOrderPayment);

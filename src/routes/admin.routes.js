@@ -25,6 +25,7 @@ import {
   listPromotions,
   listReviews,
   listUsers,
+  recordDocumentPrint,
   showDashboard,
   showInventory,
   showOrder,
@@ -50,6 +51,7 @@ export const adminRouter = Router();
 adminRouter.use(authenticate, requireAdmin);
 
 adminRouter.get("/dashboard", showDashboard);
+adminRouter.post("/document-prints", recordDocumentPrint);
 adminRouter.get("/orders", listOrders);
 adminRouter.get("/orders/:id", showOrder);
 adminRouter.patch("/orders/:id", updateOrder);

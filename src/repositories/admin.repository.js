@@ -1,5 +1,11 @@
 import { database } from "../config/database.js";
 import { calculateWeightedAverageCost } from "../domain/inventory.js";
+import {
+  reverseReturnedOrderReward,
+  reverseReviewReward,
+  rewardApprovedReview,
+  rewardDeliveredOrder,
+} from "./loyalty.repository.js";
 
 const dashboardPeriods = {
   week: {
@@ -374,6 +380,77 @@ export async function updateAdminOrderInTransaction(orderId, changes) {
       }
     }
 
+    if (nextStatus === "DA_HOAN_HANG" && order.trang_thai_don_hang !== "DA_HOAN_HANG") {
+      const returnValue = orderItems.reduce(
+        (total, item) => total + (Number(item.so_luong) * Number(item.gia_von)),
+        0,
+      );
+      const [returnResult] = await connection.execute(`
+        INSERT INTO phieu_nhap (
+          ma_phieu_nhap, nha_cung_cap_id, don_hang_id, nguoi_tao_id, loai_nhap,
+          tong_tien, ghi_chu, trang_thai
+        ) VALUES (?, NULL, ?, ?, 'NHAP_HOAN_HANG', ?, ?, 'DA_HOAN_THANH')
+      `, [
+        `PN-HOAN-${order.ma_don_hang}`,
+        order.id,
+        changes.adminId,
+        returnValue,
+        changes.returnCondition === "BAN_DUOC"
+          ? `Hàng hoàn còn bán được của đơn ${order.ma_don_hang}`
+          : `Hàng hoàn phải xuất hủy của đơn ${order.ma_don_hang}`,
+      ]);
+      for (const item of orderItems) {
+        const lineValue = Number(item.so_luong) * Number(item.gia_von);
+        await connection.execute(`
+          INSERT INTO chi_tiet_phieu_nhap (
+            phieu_nhap_id, san_pham_id, so_luong, don_gia_nhap, thanh_tien
+          ) VALUES (?, ?, ?, ?, ?)
+        `, [returnResult.insertId, item.san_pham_id, item.so_luong, item.gia_von, lineValue]);
+        if (changes.returnCondition === "BAN_DUOC") {
+          await connection.execute(
+            "UPDATE san_pham SET so_luong_ton=so_luong_ton+? WHERE id=?",
+            [item.so_luong, item.san_pham_id],
+          );
+        }
+      }
+      await reverseReturnedOrderReward(connection, order, changes.adminId);
+    }
+
+    if (nextStatus === "DANG_HOAN_HANG"
+      && order.trang_thai_don_hang !== "DANG_HOAN_HANG"
+      && order.trang_thai_thanh_toan === "DA_THANH_TOAN"
+      && changes.refundAction === "TAO_YEU_CAU") {
+      const [existingRefunds] = await connection.execute(
+        "SELECT id FROM yeu_cau_hoan_tien WHERE don_hang_id=? FOR UPDATE",
+        [order.id],
+      );
+      if (!existingRefunds[0]) {
+        const [payments] = await connection.execute(
+          "SELECT id FROM giao_dich_thanh_toan WHERE don_hang_id=? LIMIT 1 FOR UPDATE",
+          [order.id],
+        );
+        await connection.execute(`
+          INSERT INTO yeu_cau_hoan_tien (
+            don_hang_id, giao_dich_thanh_toan_id, nguoi_yeu_cau_id,
+            so_tien, ly_do, trang_thai, ghi_chu_admin
+          ) VALUES (?, ?, ?, ?, ?, 'YEU_CAU_HOAN_TIEN', ?)
+        `, [
+          order.id,
+          payments[0]?.id ?? null,
+          changes.adminId,
+          order.tong_thanh_toan,
+          changes.failureReason || "Hoàn tiền do giao hàng thất bại",
+          changes.refundAdminNote ?? null,
+        ]);
+        if (payments[0]) {
+          await connection.execute(
+            "UPDATE giao_dich_thanh_toan SET trang_thai='YEU_CAU_HOAN_TIEN' WHERE id=?",
+            [payments[0].id],
+          );
+        }
+      }
+    }
+
     if (nextStatus === "DA_GIAO" && order.trang_thai_don_hang !== "DA_GIAO"
       && order.phuong_thuc_thanh_toan === "COD" && order.trang_thai_thanh_toan === "CHUA_THANH_TOAN") {
       nextPaymentStatus = "DA_THANH_TOAN";
@@ -382,6 +459,9 @@ export async function updateAdminOrderInTransaction(orderId, changes) {
           don_hang_id, nguoi_thuc_hien_id, trang_thai_cu, trang_thai_moi, nguon, ly_do
         ) VALUES (?, ?, 'CHUA_THANH_TOAN', 'DA_THANH_TOAN', 'COD_GIAO_HANG', ?)
       `, [order.id, changes.adminId, "Đơn COD đã giao thành công"]);
+    }
+    if (nextStatus === "DA_GIAO" && order.trang_thai_don_hang !== "DA_GIAO") {
+      await rewardDeliveredOrder(connection, order, changes.adminId);
     }
 
     await connection.execute(`
@@ -392,7 +472,9 @@ export async function updateAdminOrderInTransaction(orderId, changes) {
     `, [
       nextStatus,
       nextPaymentStatus,
-      changes.adminNote ?? order.ghi_chu_admin,
+      changes.failureReason
+        ? [order.ghi_chu_admin, `Giao thất bại: ${changes.failureReason}`].filter(Boolean).join("\n")
+        : changes.adminNote ?? order.ghi_chu_admin,
       changes.cancelReason ?? order.ly_do_huy,
       changes.shippingProvider ?? order.don_vi_van_chuyen,
       changes.trackingCode ?? order.ma_van_don,
@@ -567,18 +649,81 @@ export async function findAdminReviews({ status, limit, offset }) {
 }
 
 export async function updateAdminReview(reviewId, changes) {
-  const [result] = await database.execute(`
-    UPDATE danh_gia
-    SET trang_thai=COALESCE(?, trang_thai),
-      phan_hoi_admin=COALESCE(?, phan_hoi_admin)
-    WHERE id=?
-  `, [changes.status ?? null, changes.reply ?? null, reviewId]);
-  return result.affectedRows > 0;
+  const connection = await database.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [rows] = await connection.execute(`
+      SELECT dg.*, ctdh.don_hang_id
+      FROM danh_gia dg
+      LEFT JOIN chi_tiet_don_hang ctdh ON ctdh.id=dg.chi_tiet_don_hang_id
+      WHERE dg.id=? FOR UPDATE
+    `, [reviewId]);
+    const review = rows[0];
+    if (!review) {
+      await connection.rollback();
+      return false;
+    }
+    const nextStatus = changes.status ?? review.trang_thai;
+    if (nextStatus === "DA_DUYET" && review.trang_thai !== "DA_DUYET") {
+      await rewardApprovedReview(connection, review, changes.adminId);
+    } else if (review.trang_thai === "DA_DUYET" && nextStatus !== "DA_DUYET") {
+      await reverseReviewReward(connection, review, changes.adminId);
+    }
+    await connection.execute(`
+      UPDATE danh_gia
+      SET trang_thai=?, phan_hoi_admin=COALESCE(?, phan_hoi_admin)
+      WHERE id=?
+    `, [nextStatus, changes.reply ?? null, reviewId]);
+    await connection.commit();
+    return true;
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
 }
 
-export async function deleteAdminReview(reviewId) {
-  const [result] = await database.execute("DELETE FROM danh_gia WHERE id=?", [reviewId]);
-  return result.affectedRows > 0;
+export async function insertDocumentPrintHistory(adminId, input) {
+  const connection = await database.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [prints] = await connection.execute(`
+      SELECT id FROM lich_su_in_chung_tu
+      WHERE loai_chung_tu=? AND doi_tuong_id=?
+      FOR UPDATE
+    `, [input.type, input.objectId]);
+    const printNumber = prints.length + 1;
+    if (printNumber > 1 && !input.reprintReason) {
+      const error = new Error("Vui lòng nhập lý do in lại chứng từ");
+      error.statusCode = 409;
+      throw error;
+    }
+    await connection.execute(`
+      INSERT INTO lich_su_in_chung_tu (
+        loai_chung_tu, doi_tuong_id, nguoi_in_id, lan_in,
+        ly_do_in_lai, trang_thai_chung_tu
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    `, [
+      input.type,
+      input.objectId,
+      adminId,
+      printNumber,
+      input.reprintReason ?? null,
+      input.documentStatus,
+    ]);
+    await connection.commit();
+    return { printNumber, reprint: printNumber > 1 };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
+export async function hideAdminReview(reviewId, adminId) {
+  return updateAdminReview(reviewId, { status: "DA_AN", adminId });
 }
 
 export async function findAdminArticleComments({ articleId, status, limit, offset }) {

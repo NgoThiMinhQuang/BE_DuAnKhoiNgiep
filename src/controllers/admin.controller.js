@@ -39,6 +39,7 @@ import {
   removeAdminPromotion,
   removeAdminReview,
   removeAdminUser,
+  recordAdminDocumentPrint,
 } from "../services/admin.service.js";
 
 function action(service, { status = 200, input = "body", admin = false } = {}) {
@@ -66,8 +67,9 @@ export const showUser = action(getAdminUser, { input: null });
 export const updateUser = action(changeAdminUser, { admin: true });
 export const deleteUser = action(removeAdminUser, { input: null, admin: true });
 export const listReviews = action(getAdminReviews, { input: "query" });
-export const updateReview = action(changeAdminReview);
-export const deleteReview = action(removeAdminReview, { input: null });
+export const updateReview = action(changeAdminReview, { admin: true });
+export const deleteReview = action(removeAdminReview, { input: null, admin: true });
+export const recordDocumentPrint = action(recordAdminDocumentPrint, { admin: true });
 export const listContacts = action(getAdminContacts, { input: "query" });
 export const updateContact = action(changeAdminContact, { admin: true });
 export const showSettings = action(getAdminSettings, { input: null });

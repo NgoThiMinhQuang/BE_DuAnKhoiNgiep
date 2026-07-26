@@ -7,10 +7,6 @@ import { createSePayPaymentCode } from "./payment.service.js";
 import { notifyAdmins, notifyUser } from "./notification.service.js";
 import { sendAdminNewOrderEmail, sendCustomerOrderConfirmationEmail } from "./mail.service.js";
 
-const statusMap = {
-  CHO_XAC_NHAN: "CHO_XAC_NHAN", DA_XAC_NHAN: "DA_XAC_NHAN", DANG_CHUAN_BI: "DANG_DONG_GOI",
-  DANG_GIAO: "DANG_GIAO_HANG", DA_GIAO: "DA_GIAO_HANG", DA_HUY: "DA_HUY",
-};
 const badRequest = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
 
 const paymentMethods = new Set(["COD", "CHUYEN_KHOAN"]);
@@ -184,7 +180,7 @@ export async function getCustomerOrders(userId) {
       customerNote: order.ghi_chu_khach_hang ?? undefined,
       totalProductPrice: order.tong_tien_hang, discountAmount: order.tien_giam,
       shippingFee: order.phi_van_chuyen, totalPayment: order.tong_thanh_toan,
-      paymentMethod: order.phuong_thuc_thanh_toan, orderStatus: statusMap[order.trang_thai_don_hang],
+      paymentMethod: order.phuong_thuc_thanh_toan, orderStatus: order.trang_thai_don_hang,
       paymentStatus: order.trang_thai_thanh_toan, createdAt: order.ngay_tao,
       cancelReason: order.ly_do_huy ?? undefined,
       isReviewed: orderItems.length > 0 && orderItems.every((item) => Boolean(item.da_danh_gia)),

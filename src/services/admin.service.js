@@ -13,6 +13,7 @@ import {
   findAdminInventory,
   findAdminOrderById,
   findAdminOrders,
+  insertDocumentPrintHistory,
   findAdminProducts,
   findAdminPromotions,
   findAdminReviews,
@@ -34,7 +35,7 @@ import {
   updateAdminProduct,
   updateAdminPromotion,
   updateAdminReview,
-  deleteAdminReview,
+  hideAdminReview,
   updateAdminArticleComment,
   updateAdminSettings,
   updateAdminSupplier,
@@ -201,7 +202,11 @@ const transitions = {
   CHO_XAC_NHAN: ["DA_XAC_NHAN", "DA_HUY"],
   DA_XAC_NHAN: ["DANG_CHUAN_BI", "DA_HUY"],
   DANG_CHUAN_BI: ["DANG_GIAO", "DA_HUY"],
-  DANG_GIAO: ["DA_GIAO"],
+  DANG_GIAO: ["DA_GIAO", "GIAO_THAT_BAI"],
+  GIAO_THAT_BAI: ["GIAO_LAI", "DANG_HOAN_HANG"],
+  GIAO_LAI: ["DA_GIAO", "GIAO_THAT_BAI"],
+  DANG_HOAN_HANG: ["DA_HOAN_HANG"],
+  DA_HOAN_HANG: [],
   DA_GIAO: [],
   DA_HUY: [],
 };
@@ -216,8 +221,12 @@ const refundTransitions = {
 const orderStatusLabels = {
   CHO_XAC_NHAN: "Chờ xác nhận",
   DA_XAC_NHAN: "Đã xác nhận",
-  DANG_CHUAN_BI: "Đang đóng gói",
+  DANG_CHUAN_BI: "Đang chuẩn bị hàng",
   DANG_GIAO: "Đang giao hàng",
+  GIAO_THAT_BAI: "Giao hàng thất bại",
+  GIAO_LAI: "Đang giao lại",
+  DANG_HOAN_HANG: "Đang hoàn hàng",
+  DA_HOAN_HANG: "Đã hoàn hàng",
   DA_GIAO: "Đã giao hàng",
   DA_HUY: "Đã hủy",
 };
@@ -243,6 +252,13 @@ export async function changeAdminOrder(adminId, orderId, input) {
   if (input.orderStatus === "DA_HUY" && !input.cancelReason?.trim()) {
     throw badRequest("Vui lòng nhập lý do hủy đơn");
   }
+  if (input.orderStatus === "GIAO_THAT_BAI" && !input.failureReason?.trim()) {
+    throw badRequest("Vui lòng nhập lý do giao hàng thất bại");
+  }
+  if (input.orderStatus === "DA_HOAN_HANG"
+    && !["BAN_DUOC", "XUAT_HUY"].includes(input.returnCondition)) {
+    throw badRequest("Vui lòng xác định hàng hoàn còn bán được hay phải xuất hủy");
+  }
   if (input.orderStatus === "DA_XAC_NHAN" && current.paymentMethod === "CHUYEN_KHOAN"
     && current.paymentStatus !== "DA_THANH_TOAN") {
     throw badRequest("Đơn chuyển khoản phải thanh toán trước khi xác nhận", 409);
@@ -252,6 +268,13 @@ export async function changeAdminOrder(adminId, orderId, input) {
     && current.paymentStatus === "DA_THANH_TOAN";
   if (isCancellingPaidOrder && input.refundAction !== "TAO_YEU_CAU") {
     throw badRequest("Đơn đã thanh toán. Vui lòng chọn tạo yêu cầu hoàn tiền trước khi hủy", 409);
+  }
+  const isReturningPaidOrder = input.orderStatus === "DANG_HOAN_HANG"
+    && current.orderStatus !== "DANG_HOAN_HANG"
+    && current.paymentStatus === "DA_THANH_TOAN"
+    && !current.refundRequestId;
+  if (isReturningPaidOrder && input.refundAction !== "TAO_YEU_CAU") {
+    throw badRequest("Đơn đã thanh toán. Vui lòng tạo yêu cầu hoàn tiền khi bắt đầu hoàn hàng", 409);
   }
   if (input.refundStatus) {
     if (!Object.hasOwn(refundTransitions, input.refundStatus)) throw badRequest("Trạng thái hoàn tiền không hợp lệ");
@@ -267,6 +290,8 @@ export async function changeAdminOrder(adminId, orderId, input) {
     shippingProvider: input.shippingProvider?.trim(), trackingCode: input.trackingCode?.trim(),
     adminId, refundAction: input.refundAction, refundStatus: input.refundStatus,
     refundAdminNote: input.refundAdminNote?.trim(),
+    failureReason: input.failureReason?.trim(),
+    returnCondition: input.returnCondition,
   })) throw badRequest("Không tìm thấy đơn hàng", 404);
   const updated = await getAdminOrder(orderId);
   if (updated.orderStatus !== current.orderStatus) {
@@ -355,15 +380,53 @@ export async function getAdminReviews(query) {
   })), options.page, options.limit, result.total);
 }
 
-export async function changeAdminReview(reviewId, input) {
-  if (input.status && !["CHO_DUYET", "DA_DUYET", "TU_CHOI"].includes(input.status)) throw badRequest("Trạng thái đánh giá không hợp lệ");
-  if (!await updateAdminReview(reviewId, { status: input.status, reply: input.reply?.trim() })) {
+export async function changeAdminReview(adminId, reviewId, input) {
+  if (input.status && !["CHO_DUYET", "DA_DUYET", "TU_CHOI", "DA_AN"].includes(input.status)) throw badRequest("Trạng thái đánh giá không hợp lệ");
+  if (!await updateAdminReview(reviewId, { status: input.status, reply: input.reply?.trim(), adminId })) {
     throw badRequest("Không tìm thấy đánh giá", 404);
   }
 }
 
-export async function removeAdminReview(reviewId) {
-  if (!await deleteAdminReview(reviewId)) throw badRequest("Không tìm thấy đánh giá", 404);
+export async function removeAdminReview(adminId, reviewId) {
+  if (!await hideAdminReview(reviewId, adminId)) throw badRequest("Không tìm thấy đánh giá", 404);
+}
+
+const printableDocumentTypes = new Set([
+  "DON_BAN_HANG", "PHIEU_DONG_GOI", "PHIEU_GIAO_HANG",
+  "NHAN_VAN_CHUYEN", "PHIEU_XUAT_KHO", "PHIEU_GIAO_THAT_BAI",
+  "PHIEU_NHAP_KHO", "PHIEU_NHAP_HOAN_HANG",
+]);
+
+const allOrderPrintStatuses = new Set([
+  "CHO_XAC_NHAN", "DA_XAC_NHAN", "DANG_CHUAN_BI", "DANG_GIAO", "DA_GIAO",
+  "GIAO_THAT_BAI", "GIAO_LAI", "DANG_HOAN_HANG", "DA_HOAN_HANG", "DA_HUY",
+]);
+const stockVoucherPrintStatuses = new Set(["NHAP_TAM", "DA_HOAN_THANH", "DA_HUY"]);
+const documentStatusRules = {
+  DON_BAN_HANG: allOrderPrintStatuses,
+  PHIEU_DONG_GOI: new Set(["DA_XAC_NHAN", "DANG_CHUAN_BI", "DANG_GIAO", "DA_GIAO"]),
+  PHIEU_GIAO_HANG: new Set(["DA_XAC_NHAN", "DANG_CHUAN_BI", "DANG_GIAO", "DA_GIAO", "GIAO_LAI"]),
+  NHAN_VAN_CHUYEN: new Set([...allOrderPrintStatuses].filter((status) => status !== "DA_HUY")),
+  PHIEU_XUAT_KHO: new Set([...stockVoucherPrintStatuses, "DANG_GIAO", "DA_GIAO"]),
+  PHIEU_GIAO_THAT_BAI: new Set(["GIAO_THAT_BAI", "GIAO_LAI", "DANG_HOAN_HANG", "DA_HOAN_HANG"]),
+  PHIEU_NHAP_KHO: stockVoucherPrintStatuses,
+  PHIEU_NHAP_HOAN_HANG: new Set(["DA_HOAN_HANG"]),
+};
+
+export async function recordAdminDocumentPrint(adminId, input) {
+  if (!printableDocumentTypes.has(input.type)) throw badRequest("Loại chứng từ không hợp lệ");
+  const objectId = integerValue(input.objectId, "Chứng từ", 1);
+  const documentStatus = requiredText(input.documentStatus, "Trạng thái chứng từ").slice(0, 50);
+  if (!documentStatusRules[input.type].has(documentStatus)) {
+    throw badRequest("Trạng thái hiện tại chưa cho phép in loại chứng từ này");
+  }
+  const reprintReason = input.reprintReason == null ? null : requiredText(input.reprintReason, "Lý do in lại").slice(0, 500);
+  return insertDocumentPrintHistory(adminId, {
+    type: input.type,
+    objectId,
+    documentStatus,
+    reprintReason,
+  });
 }
 
 export async function getAdminArticleComments(query) {

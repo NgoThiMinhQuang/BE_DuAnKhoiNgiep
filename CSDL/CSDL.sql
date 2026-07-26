@@ -28,8 +28,23 @@ CREATE TABLE cau_hinh_cua_hang (
         NOT NULL DEFAULT 300000,
 
     facebook_url VARCHAR(500) NULL,
+    bat_facebook TINYINT(1) NOT NULL DEFAULT 1,
     instagram_url VARCHAR(500) NULL,
+    bat_instagram TINYINT(1) NOT NULL DEFAULT 1,
     tiktok_url VARCHAR(500) NULL,
+    bat_tiktok TINYINT(1) NOT NULL DEFAULT 1,
+    youtube_url VARCHAR(500) NULL,
+    bat_youtube TINYINT(1) NOT NULL DEFAULT 1,
+    ten_phap_ly VARCHAR(150) NULL,
+    email_ho_tro VARCHAR(150) NULL,
+    google_maps_url VARCHAR(500) NULL,
+    tien_to_don_hang VARCHAR(8) NOT NULL DEFAULT 'RBB',
+    bat_cod TINYINT(1) NOT NULL DEFAULT 1,
+    bat_chuyen_khoan TINYINT(1) NOT NULL DEFAULT 1,
+    email_thong_bao VARCHAR(150) NULL,
+    nguong_canh_bao_kho INT UNSIGNED NOT NULL DEFAULT 5,
+    gui_email_xac_nhan TINYINT(1) NOT NULL DEFAULT 1,
+    che_do_bao_tri TINYINT(1) NOT NULL DEFAULT 0,
 
     ngay_tao DATETIME NOT NULL
         DEFAULT CURRENT_TIMESTAMP,
@@ -70,7 +85,8 @@ CREATE TABLE nguoi_dung (
 
     trang_thai ENUM(
         'HOAT_DONG',
-        'BI_KHOA'
+        'BI_KHOA',
+        'DA_XOA'
     ) NOT NULL DEFAULT 'HOAT_DONG',
 
     ngay_tao DATETIME NOT NULL
@@ -242,6 +258,8 @@ CREATE TABLE san_pham (
         NOT NULL DEFAULT 0,
 
     so_luong_ton INT UNSIGNED
+        NOT NULL DEFAULT 0,
+    so_luong_giu_cho INT UNSIGNED
         NOT NULL DEFAULT 0,
 
     ton_toi_thieu INT UNSIGNED
@@ -454,6 +472,8 @@ CREATE TABLE khuyen_mai (
 
     so_luot_da_su_dung INT UNSIGNED
         NOT NULL DEFAULT 0,
+    so_luot_toi_da_moi_khach INT UNSIGNED
+        NOT NULL DEFAULT 1,
 
     ngay_bat_dau DATETIME NOT NULL,
     ngay_ket_thuc DATETIME NOT NULL,
@@ -522,8 +542,10 @@ CREATE TABLE don_hang (
     email VARCHAR(150) NULL,
 
     tinh_thanh VARCHAR(150) NOT NULL,
+    tinh_thanh_ma VARCHAR(20) NULL,
     quan_huyen VARCHAR(150) NOT NULL,
     phuong_xa VARCHAR(150) NOT NULL,
+    phuong_xa_ma VARCHAR(20) NULL,
 
     dia_chi_chi_tiet VARCHAR(500) NOT NULL,
 
@@ -537,6 +559,14 @@ CREATE TABLE don_hang (
         NOT NULL DEFAULT 0,
 
     tong_thanh_toan DECIMAL(15,2)
+        NOT NULL DEFAULT 0,
+
+    gia_tri_tich_luy DECIMAL(15,2)
+        NOT NULL DEFAULT 0,
+
+    ty_le_tich_xu DECIMAL(5,4) NULL,
+
+    xu_duoc_nhan BIGINT UNSIGNED
         NOT NULL DEFAULT 0,
 
     phuong_thuc_thanh_toan ENUM(
@@ -559,6 +589,10 @@ CREATE TABLE don_hang (
         'DANG_CHUAN_BI',
         'DANG_GIAO',
         'DA_GIAO',
+        'GIAO_THAT_BAI',
+        'GIAO_LAI',
+        'DANG_HOAN_HANG',
+        'DA_HOAN_HANG',
         'DA_HUY'
     ) NOT NULL DEFAULT 'CHO_XAC_NHAN',
 
@@ -623,10 +657,15 @@ CREATE TABLE IF NOT EXISTS giao_dich_thanh_toan (
         'CHO_THANH_TOAN',
         'DA_THANH_TOAN',
         'HET_HAN',
-        'DA_HUY'
+        'DA_HUY',
+        'YEU_CAU_HOAN_TIEN',
+        'DANG_HOAN_TIEN',
+        'DA_HOAN_TIEN',
+        'HOAN_TIEN_THAT_BAI'
     ) NOT NULL DEFAULT 'CHO_THANH_TOAN',
     ma_giao_dich_nha_cung_cap VARCHAR(100) NULL,
     ngay_thanh_toan DATETIME NULL,
+    het_han_luc DATETIME NULL,
     ngay_tao DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     ngay_cap_nhat DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 
@@ -635,6 +674,7 @@ CREATE TABLE IF NOT EXISTS giao_dich_thanh_toan (
     UNIQUE KEY uk_gdtt_ma_thanh_toan (ma_thanh_toan),
     UNIQUE KEY uk_gdtt_ma_nha_cung_cap (ma_giao_dich_nha_cung_cap),
     KEY idx_gdtt_trang_thai (trang_thai),
+    KEY idx_gdtt_het_han (trang_thai, het_han_luc),
 
     CONSTRAINT fk_gdtt_don_hang
         FOREIGN KEY (don_hang_id)
@@ -758,8 +798,11 @@ CREATE TABLE phieu_nhap (
 
     ma_phieu_nhap VARCHAR(50) NOT NULL,
 
-    nha_cung_cap_id INT UNSIGNED NOT NULL,
+    nha_cung_cap_id INT UNSIGNED NULL,
+    don_hang_id INT UNSIGNED NULL,
     nguoi_tao_id INT UNSIGNED NULL,
+    loai_nhap ENUM('NHAP_HANG', 'NHAP_HOAN_HANG', 'NHAP_KHAC')
+        NOT NULL DEFAULT 'NHAP_HANG',
 
     ngay_nhap DATETIME NOT NULL
         DEFAULT CURRENT_TIMESTAMP,
@@ -787,6 +830,10 @@ CREATE TABLE phieu_nhap (
     UNIQUE KEY uk_phieu_nhap_ma (
         ma_phieu_nhap
     ),
+    UNIQUE KEY uk_phieu_nhap_don_hoan (
+        don_hang_id,
+        loai_nhap
+    ),
 
     KEY idx_phieu_nhap_ncc (
         nha_cung_cap_id
@@ -803,6 +850,11 @@ CREATE TABLE phieu_nhap (
     CONSTRAINT fk_phieu_nhap_ncc
         FOREIGN KEY (nha_cung_cap_id)
         REFERENCES nha_cung_cap(id)
+        ON DELETE RESTRICT,
+
+    CONSTRAINT fk_phieu_nhap_don_hang
+        FOREIGN KEY (don_hang_id)
+        REFERENCES don_hang(id)
         ON DELETE RESTRICT,
 
     CONSTRAINT fk_phieu_nhap_nguoi_tao
@@ -981,7 +1033,8 @@ CREATE TABLE danh_gia (
     trang_thai ENUM(
         'CHO_DUYET',
         'DA_DUYET',
-        'TU_CHOI'
+        'TU_CHOI',
+        'DA_AN'
     ) NOT NULL DEFAULT 'CHO_DUYET',
 
     ngay_tao DATETIME NOT NULL
@@ -1194,3 +1247,251 @@ CREATE TABLE IF NOT EXISTS dang_ky_push (
         REFERENCES nguoi_dung(id)
         ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ================================================================
+-- CAC BANG BO SUNG SAU MIGRATION (SNAPSHOT DAY DU)
+-- ================================================================
+
+CREATE TABLE IF NOT EXISTS tep_anh (
+    id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    nguoi_tai_len_id INT UNSIGNED NULL,
+    ten_tep VARCHAR(255) NOT NULL,
+    loai_mime VARCHAR(100) NOT NULL,
+    kich_thuoc INT UNSIGNED NOT NULL,
+    du_lieu MEDIUMBLOB NOT NULL,
+    ngay_tao DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_tep_anh_nguoi_tai_len (nguoi_tai_len_id),
+    CONSTRAINT fk_tep_anh_nguoi_tai_len FOREIGN KEY (nguoi_tai_len_id)
+        REFERENCES nguoi_dung(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS yeu_cau_hoan_tien (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    don_hang_id INT UNSIGNED NOT NULL,
+    giao_dich_thanh_toan_id BIGINT UNSIGNED NULL,
+    nguoi_yeu_cau_id INT UNSIGNED NULL,
+    so_tien DECIMAL(15,2) NOT NULL,
+    ly_do TEXT NOT NULL,
+    phuong_thuc ENUM('CHUYEN_KHOAN_THU_CONG') NOT NULL DEFAULT 'CHUYEN_KHOAN_THU_CONG',
+    trang_thai ENUM('YEU_CAU_HOAN_TIEN', 'DANG_HOAN_TIEN', 'DA_HOAN_TIEN', 'HOAN_TIEN_THAT_BAI')
+        NOT NULL DEFAULT 'YEU_CAU_HOAN_TIEN',
+    ghi_chu_admin TEXT NULL,
+    ngay_yeu_cau DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    ngay_bat_dau DATETIME NULL,
+    ngay_hoan_tien DATETIME NULL,
+    ngay_cap_nhat DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_ycht_don_hang (don_hang_id),
+    KEY idx_ycht_trang_thai (trang_thai),
+    CONSTRAINT fk_ycht_don_hang FOREIGN KEY (don_hang_id) REFERENCES don_hang(id) ON DELETE CASCADE,
+    CONSTRAINT fk_ycht_giao_dich FOREIGN KEY (giao_dich_thanh_toan_id)
+        REFERENCES giao_dich_thanh_toan(id) ON DELETE SET NULL,
+    CONSTRAINT fk_ycht_nguoi_yeu_cau FOREIGN KEY (nguoi_yeu_cau_id)
+        REFERENCES nguoi_dung(id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS lich_su_trang_thai_thanh_toan (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    don_hang_id INT UNSIGNED NOT NULL,
+    nguoi_thuc_hien_id INT UNSIGNED NULL,
+    trang_thai_cu ENUM('CHUA_THANH_TOAN', 'DA_THANH_TOAN', 'THAT_BAI', 'DA_HOAN_TIEN') NOT NULL,
+    trang_thai_moi ENUM('CHUA_THANH_TOAN', 'DA_THANH_TOAN', 'THAT_BAI', 'DA_HOAN_TIEN') NOT NULL,
+    nguon ENUM('SEPAY_WEBHOOK', 'COD_GIAO_HANG', 'HOAN_TIEN') NOT NULL,
+    ly_do VARCHAR(500) NOT NULL,
+    du_lieu_doi_chieu JSON NULL,
+    ngay_tao DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_lstttt_don_hang (don_hang_id, ngay_tao),
+    CONSTRAINT fk_lstttt_don_hang FOREIGN KEY (don_hang_id) REFERENCES don_hang(id) ON DELETE CASCADE,
+    CONSTRAINT fk_lstttt_nguoi_thuc_hien FOREIGN KEY (nguoi_thuc_hien_id)
+        REFERENCES nguoi_dung(id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS lich_su_quyen_nguoi_dung (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    nguoi_dung_id INT UNSIGNED NOT NULL,
+    nguoi_thuc_hien_id INT UNSIGNED NOT NULL,
+    vai_tro_cu ENUM('ADMIN', 'KHACH_HANG') NOT NULL,
+    vai_tro_moi ENUM('ADMIN', 'KHACH_HANG') NOT NULL,
+    trang_thai_cu ENUM('HOAT_DONG', 'BI_KHOA', 'DA_XOA') NOT NULL,
+    trang_thai_moi ENUM('HOAT_DONG', 'BI_KHOA', 'DA_XOA') NOT NULL,
+    ngay_tao DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_lsqnd_nguoi_dung (nguoi_dung_id, ngay_tao),
+    CONSTRAINT fk_lsqnd_nguoi_dung FOREIGN KEY (nguoi_dung_id)
+        REFERENCES nguoi_dung(id) ON DELETE CASCADE,
+    CONSTRAINT fk_lsqnd_nguoi_thuc_hien FOREIGN KEY (nguoi_thuc_hien_id)
+        REFERENCES nguoi_dung(id)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS lich_su_su_dung_khuyen_mai (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    khuyen_mai_id INT UNSIGNED NOT NULL,
+    nguoi_dung_id INT UNSIGNED NOT NULL,
+    don_hang_id INT UNSIGNED NOT NULL,
+    ngay_su_dung DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_lssdkm_don_hang (don_hang_id),
+    KEY idx_lssdkm_khach (khuyen_mai_id, nguoi_dung_id),
+    FOREIGN KEY (khuyen_mai_id) REFERENCES khuyen_mai(id),
+    FOREIGN KEY (nguoi_dung_id) REFERENCES nguoi_dung(id),
+    FOREIGN KEY (don_hang_id) REFERENCES don_hang(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS cau_hoi_thuong_gap (
+    id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    intent VARCHAR(50) NOT NULL,
+    noi_dung TEXT NOT NULL,
+    trang_thai ENUM('HOAT_DONG','TAM_AN') NOT NULL DEFAULT 'HOAT_DONG',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_chttg_intent (intent)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS phien_chat (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    nguoi_dung_id INT UNSIGNED NOT NULL,
+    kenh ENUM('BOT','NGUOI_BAN') NOT NULL DEFAULT 'BOT',
+    trang_thai ENUM('DANG_MO','DA_DONG') NOT NULL DEFAULT 'DANG_MO',
+    ngay_tao DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    ngay_cap_nhat DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_pc_user (nguoi_dung_id, kenh, trang_thai),
+    FOREIGN KEY (nguoi_dung_id) REFERENCES nguoi_dung(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS tin_nhan_chat (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    phien_chat_id BIGINT UNSIGNED NOT NULL,
+    loai_nguoi_gui ENUM('KHACH_HANG','BOT','ADMIN') NOT NULL,
+    noi_dung TEXT NOT NULL,
+    intent VARCHAR(50) NULL,
+    da_doc_luc DATETIME NULL,
+    ngay_gui DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_tnc_session (phien_chat_id, id),
+    FOREIGN KEY (phien_chat_id) REFERENCES phien_chat(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS hang_thanh_vien (
+    id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    ma_hang ENUM('THANH_VIEN', 'BAC', 'VANG', 'KIM_CUONG') NOT NULL,
+    ten_hang VARCHAR(100) NOT NULL,
+    chi_tieu_toi_thieu DECIMAL(15,2) NOT NULL DEFAULT 0,
+    ty_le_tich_xu DECIMAL(5,4) NOT NULL DEFAULT 0.01,
+    trang_thai ENUM('HOAT_DONG', 'TAM_DUNG') NOT NULL DEFAULT 'HOAT_DONG',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_htv_ma_hang (ma_hang),
+    KEY idx_htv_chi_tieu (chi_tieu_toi_thieu)
+) ENGINE=InnoDB;
+
+INSERT INTO hang_thanh_vien (ma_hang, ten_hang, chi_tieu_toi_thieu, ty_le_tich_xu)
+VALUES
+    ('THANH_VIEN', 'Thành viên', 0, 0.0100),
+    ('BAC', 'Bạc', 1000000, 0.0150),
+    ('VANG', 'Vàng', 3000000, 0.0200),
+    ('KIM_CUONG', 'Kim cương', 7000000, 0.0300)
+ON DUPLICATE KEY UPDATE
+    ten_hang=VALUES(ten_hang),
+    chi_tieu_toi_thieu=VALUES(chi_tieu_toi_thieu),
+    ty_le_tich_xu=VALUES(ty_le_tich_xu);
+
+CREATE TABLE IF NOT EXISTS vi_xu (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    nguoi_dung_id INT UNSIGNED NOT NULL,
+    hang_thanh_vien_id INT UNSIGNED NOT NULL,
+    so_du_kha_dung BIGINT NOT NULL DEFAULT 0,
+    so_du_giu_cho BIGINT UNSIGNED NOT NULL DEFAULT 0,
+    xu_cho_thu_hoi BIGINT UNSIGNED NOT NULL DEFAULT 0,
+    chi_tieu_xep_hang DECIMAL(15,2) NOT NULL DEFAULT 0,
+    ngay_tao DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    ngay_cap_nhat DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_vi_xu_nguoi_dung (nguoi_dung_id),
+    KEY idx_vi_xu_hang (hang_thanh_vien_id),
+    FOREIGN KEY (nguoi_dung_id) REFERENCES nguoi_dung(id) ON DELETE CASCADE,
+    FOREIGN KEY (hang_thanh_vien_id) REFERENCES hang_thanh_vien(id)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS giao_dich_xu (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    nguoi_dung_id INT UNSIGNED NOT NULL,
+    don_hang_id INT UNSIGNED NULL,
+    danh_gia_id INT UNSIGNED NULL,
+    loai_giao_dich ENUM(
+        'THUONG_DANH_GIA', 'TICH_LUY_DON_HANG', 'HOAN_TAC_DANH_GIA',
+        'THU_HOI_XU_HOAN_HANG', 'DIEU_CHINH_ADMIN'
+    ) NOT NULL,
+    so_xu BIGINT NOT NULL,
+    so_du_sau_giao_dich BIGINT NOT NULL,
+    ma_tham_chieu VARCHAR(100) NOT NULL,
+    noi_dung VARCHAR(500) NOT NULL,
+    nguoi_thuc_hien_id INT UNSIGNED NULL,
+    ngay_tao DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_gdx_ma_tham_chieu (ma_tham_chieu),
+    KEY idx_gdx_nguoi_dung (nguoi_dung_id, ngay_tao),
+    FOREIGN KEY (nguoi_dung_id) REFERENCES nguoi_dung(id) ON DELETE CASCADE,
+    FOREIGN KEY (don_hang_id) REFERENCES don_hang(id) ON DELETE SET NULL,
+    FOREIGN KEY (danh_gia_id) REFERENCES danh_gia(id) ON DELETE SET NULL,
+    FOREIGN KEY (nguoi_thuc_hien_id) REFERENCES nguoi_dung(id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS lich_su_hang_thanh_vien (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    nguoi_dung_id INT UNSIGNED NOT NULL,
+    hang_cu_id INT UNSIGNED NULL,
+    hang_moi_id INT UNSIGNED NOT NULL,
+    chi_tieu_tai_thoi_diem DECIMAL(15,2) NOT NULL,
+    ly_do VARCHAR(255) NOT NULL,
+    ngay_thay_doi DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_lshtv_nguoi_dung (nguoi_dung_id, ngay_thay_doi),
+    FOREIGN KEY (nguoi_dung_id) REFERENCES nguoi_dung(id) ON DELETE CASCADE,
+    FOREIGN KEY (hang_cu_id) REFERENCES hang_thanh_vien(id) ON DELETE SET NULL,
+    FOREIGN KEY (hang_moi_id) REFERENCES hang_thanh_vien(id)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS lich_su_in_chung_tu (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    loai_chung_tu ENUM(
+        'DON_BAN_HANG', 'PHIEU_DONG_GOI', 'PHIEU_GIAO_HANG',
+        'NHAN_VAN_CHUYEN', 'PHIEU_XUAT_KHO', 'PHIEU_GIAO_THAT_BAI',
+        'PHIEU_NHAP_KHO', 'PHIEU_NHAP_HOAN_HANG'
+    ) NOT NULL,
+    doi_tuong_id BIGINT UNSIGNED NOT NULL,
+    nguoi_in_id INT UNSIGNED NOT NULL,
+    lan_in INT UNSIGNED NOT NULL,
+    ly_do_in_lai VARCHAR(500) NULL,
+    trang_thai_chung_tu VARCHAR(50) NOT NULL,
+    ngay_in DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_lsinct_lan_in (loai_chung_tu, doi_tuong_id, lan_in),
+  KEY idx_lsinct_doi_tuong (loai_chung_tu, doi_tuong_id, ngay_in),
+    FOREIGN KEY (nguoi_in_id) REFERENCES nguoi_dung(id)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    file_name VARCHAR(255) NOT NULL,
+    applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_schema_migrations_file_name (file_name)
+) ENGINE=InnoDB;
+
+INSERT IGNORE INTO schema_migrations (file_name) VALUES
+    ('0000_baseline.sql'),
+    ('0001_add_sepay_payments.sql'),
+    ('0002_add_uploaded_images.sql'),
+    ('0002_inventory_reservations_payment_expiry.sql'),
+    ('0003_add_refund_workflow.sql'),
+    ('0004_payment_audit_log.sql'),
+    ('0005_admin_role_audit.sql'),
+    ('0006_store_promotion_address_settings.sql'),
+    ('0007_chat_sessions_faq.sql'),
+    ('0008_add_user_deleted_status.sql'),
+    ('0009_web_push_notifications.sql'),
+    ('0010_social_visibility_settings.sql'),
+    ('0011_review_soft_delete_and_returns.sql'),
+    ('0012_loyalty_wallet_and_member_tiers.sql'),
+    ('0013_document_print_history.sql');

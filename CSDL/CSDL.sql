@@ -1420,7 +1420,7 @@ CREATE TABLE IF NOT EXISTS giao_dich_xu (
     danh_gia_id INT UNSIGNED NULL,
     loai_giao_dich ENUM(
         'THUONG_DANH_GIA', 'TICH_LUY_DON_HANG', 'HOAN_TAC_DANH_GIA',
-        'THU_HOI_XU_HOAN_HANG', 'DIEU_CHINH_ADMIN'
+        'THU_HOI_XU_HOAN_HANG', 'DIEU_CHINH_ADMIN', 'DIEM_DANH_HANG_NGAY'
     ) NOT NULL,
     so_xu BIGINT NOT NULL,
     so_du_sau_giao_dich BIGINT NOT NULL,
@@ -1494,4 +1494,5 @@ INSERT IGNORE INTO schema_migrations (file_name) VALUES
     ('0010_social_visibility_settings.sql'),
     ('0011_review_soft_delete_and_returns.sql'),
     ('0012_loyalty_wallet_and_member_tiers.sql'),
-    ('0013_document_print_history.sql');
+    ('0013_document_print_history.sql'),
+    ('0014_daily_check_in_coins.sql');

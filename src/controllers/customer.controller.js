@@ -13,10 +13,15 @@ import {
 } from "../services/customer.service.js";
 import { getCustomerSupportMessages, readCustomerSupportMessages } from "../services/contact.service.js";
 import { answerCustomerChatbot, getCustomerChatHistory } from "../services/chatbot.service.js";
-import { getCustomerLoyalty } from "../services/loyalty.service.js";
+import { checkInCustomerDaily, getCustomerLoyalty } from "../services/loyalty.service.js";
 
 export async function showMyLoyalty(request, response, next) {
   try { response.json({ success: true, data: await getCustomerLoyalty(request.auth.userId, request.query) }); }
+  catch (error) { next(error); }
+}
+
+export async function checkInDaily(request, response, next) {
+  try { response.json({ success: true, data: await checkInCustomerDaily(request.auth.userId) }); }
   catch (error) { next(error); }
 }
 

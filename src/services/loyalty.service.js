@@ -1,4 +1,8 @@
-import { findCustomerLoyalty } from "../repositories/loyalty.repository.js";
+import { findCustomerLoyalty, rewardDailyCheckIn } from "../repositories/loyalty.repository.js";
+
+export async function checkInCustomerDaily(userId) {
+  return rewardDailyCheckIn(userId);
+}
 
 export async function getCustomerLoyalty(userId, query = {}) {
   const page = Math.max(Number.parseInt(query.page ?? "1", 10) || 1, 1);
@@ -24,6 +28,10 @@ export async function getCustomerLoyalty(userId, query = {}) {
         earningRate: Number(nextTier.ty_le_tich_xu),
         remainingSpend: Math.max(0, Number(nextTier.chi_tieu_toi_thieu) - Number(summary.chi_tieu_xep_hang)),
       } : null,
+    },
+    dailyCheckIn: {
+      rewardCoins: 100,
+      claimedToday: Boolean(summary.da_diem_danh_hom_nay),
     },
     transactions: result.transactions.map((item) => ({
       id: String(item.id),

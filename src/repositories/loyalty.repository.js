@@ -38,8 +38,9 @@ async function findTransaction(connection, reference) {
 async function addCoins(connection, {
   userId, orderId = null, reviewId = null, type, amount, reference, content, actorId = null,
 }) {
-  if (amount <= 0 || await findTransaction(connection, reference)) return false;
+  if (amount <= 0) return false;
   const wallet = await ensureWallet(connection, userId);
+  if (await findTransaction(connection, reference)) return false;
   const recovered = Math.min(Number(wallet.xu_cho_thu_hoi), amount);
   const credited = amount - recovered;
   const balance = Number(wallet.so_du_kha_dung) + credited;
@@ -59,11 +60,54 @@ async function addCoins(connection, {
   return true;
 }
 
+function bangkokDateKey() {
+  const parts = new Intl.DateTimeFormat("en", {
+    timeZone: "Asia/Bangkok", year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(new Date());
+  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${value.year}-${value.month}-${value.day}`;
+}
+
+export async function rewardDailyCheckIn(userId) {
+  const connection = await database.getConnection();
+  const reference = `DAILY_CHECKIN:${userId}:${bangkokDateKey()}`;
+  try {
+    await connection.beginTransaction();
+    const rewarded = await addCoins(connection, {
+      userId,
+      type: "DIEM_DANH_HANG_NGAY",
+      amount: 100,
+      reference,
+      content: "Điểm danh hằng ngày",
+    });
+    const [rows] = await connection.execute(`
+      SELECT vx.so_du_kha_dung, h.ma_hang, h.ten_hang
+      FROM vi_xu vx
+      INNER JOIN hang_thanh_vien h ON h.id=vx.hang_thanh_vien_id
+      WHERE vx.nguoi_dung_id=?
+    `, [userId]);
+    await connection.commit();
+    return {
+      rewarded,
+      coinsAwarded: rewarded ? 100 : 0,
+      availableCoins: Number(rows[0].so_du_kha_dung),
+      tierCode: rows[0].ma_hang,
+      tierName: rows[0].ten_hang,
+    };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
 async function removeCoins(connection, {
   userId, orderId = null, reviewId = null, type, amount, reference, content, actorId = null,
 }) {
-  if (amount <= 0 || await findTransaction(connection, reference)) return false;
+  if (amount <= 0) return false;
   const wallet = await ensureWallet(connection, userId);
+  if (await findTransaction(connection, reference)) return false;
   const deducted = Math.min(Number(wallet.so_du_kha_dung), amount);
   const debt = amount - deducted;
   const balance = Number(wallet.so_du_kha_dung) - deducted;
@@ -184,12 +228,15 @@ export async function findCustomerLoyalty(userId, { limit = 20, offset = 0 } = {
     await connection.beginTransaction();
     const wallet = await ensureWallet(connection, userId);
     await connection.commit();
+    const dailyReference = `DAILY_CHECKIN:${userId}:${bangkokDateKey()}`;
     const [[summary], [nextTiers], [transactions], [counts]] = await Promise.all([
       database.execute(`
-        SELECT vx.*, h.ma_hang, h.ten_hang, h.ty_le_tich_xu, h.chi_tieu_toi_thieu
+        SELECT vx.*, h.ma_hang, h.ten_hang, h.ty_le_tich_xu, h.chi_tieu_toi_thieu,
+          EXISTS(SELECT 1 FROM giao_dich_xu g
+            WHERE g.ma_tham_chieu=?) AS da_diem_danh_hom_nay
         FROM vi_xu vx INNER JOIN hang_thanh_vien h ON h.id=vx.hang_thanh_vien_id
         WHERE vx.nguoi_dung_id=?
-      `, [userId]),
+      `, [dailyReference, userId]),
       database.execute(`
         SELECT id, ma_hang, ten_hang, chi_tieu_toi_thieu, ty_le_tich_xu
         FROM hang_thanh_vien

@@ -33,7 +33,7 @@ function normalizeProductIds(values) {
   return ids;
 }
 
-function calculateCheckout(productIds, promotionCode, context) {
+function calculateCheckout(productIds, promotionCode, useCoins, context) {
   if (context.items.length !== productIds.length) throw badRequest("Một số sản phẩm không còn trong giỏ hàng", 409);
   for (const item of context.items) {
     if (item.trang_thai !== "DANG_BAN") throw badRequest(`${item.ten_san_pham} đã ngừng bán`, 409);
@@ -65,8 +65,12 @@ function calculateCheckout(productIds, promotionCode, context) {
     }
   }
   discountAmount = Math.round(discountAmount);
+  const availableCoins = Math.max(0, Number(context.availableCoins) || 0);
+  const amountBeforeCoins = Math.max(0, subtotal - discountAmount + shippingFee);
+  const coinsUsed = useCoins ? Math.min(availableCoins, amountBeforeCoins) : 0;
   return {
-    subtotal, discountAmount, shippingFee, totalPayment: Math.max(0, subtotal - discountAmount + shippingFee),
+    subtotal, discountAmount, shippingFee, availableCoins, coinsUsed,
+    totalPayment: amountBeforeCoins - coinsUsed,
     promotion,
   };
 }
@@ -120,6 +124,7 @@ function mapCheckoutSummary(summary, context) {
       price: item.gia_ban, quantity: item.so_luong, weight: item.quy_cach ?? "",
     })),
     subtotal: summary.subtotal, discountAmount: summary.discountAmount,
+    availableCoins: summary.availableCoins, coinsUsed: summary.coinsUsed,
     shippingFee: summary.shippingFee, totalPayment: summary.totalPayment,
     appliedPromotion: summary.promotion ? { code: summary.promotion.ma_khuyen_mai, description: summary.promotion.ten_khuyen_mai } : null,
     promotions: suggestedPromotions,
@@ -129,7 +134,7 @@ function mapCheckoutSummary(summary, context) {
 export async function getCheckoutQuote(userId, input) {
   const productIds = normalizeProductIds(input.productIds);
   const context = await findCheckoutContext(userId, productIds);
-  return mapCheckoutSummary(calculateCheckout(productIds, input.promotionCode, context), context);
+  return mapCheckoutSummary(calculateCheckout(productIds, input.promotionCode, input.useCoins === true, context), context);
 }
 
 export async function createCustomerOrder(userId, input) {
@@ -141,7 +146,7 @@ export async function createCustomerOrder(userId, input) {
   const paymentCode = input.paymentMethod === "CHUYEN_KHOAN" ? createSePayPaymentCode() : null;
   const result = await createOrderInTransaction(
     userId, productIds, { ...input, paymentCode },
-    (context) => calculateCheckout(productIds, input.promotionCode, context),
+    (context) => calculateCheckout(productIds, input.promotionCode, input.useCoins === true, context),
   );
   await Promise.all([
     notifyUser(userId, {
@@ -165,7 +170,7 @@ export async function createCustomerOrder(userId, input) {
   return {
     id: String(result.id),
     orderCode: result.orderCode,
-    paymentRequired: input.paymentMethod === "CHUYEN_KHOAN",
+    paymentRequired: input.paymentMethod === "CHUYEN_KHOAN" && result.summary.totalPayment > 0,
   };
 }
 

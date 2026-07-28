@@ -21,11 +21,11 @@ export async function cancelUserOrder(userId, orderId, reason) {
   try {
     await connection.beginTransaction();
     const [orders] = await connection.execute(`
-      SELECT id, khuyen_mai_id
+      SELECT id, khuyen_mai_id, xu_da_dung
       FROM don_hang
       WHERE id=? AND nguoi_dung_id=?
         AND trang_thai_don_hang='CHO_XAC_NHAN'
-        AND trang_thai_thanh_toan='CHUA_THANH_TOAN'
+        AND (trang_thai_thanh_toan='CHUA_THANH_TOAN' OR tong_thanh_toan=0)
       FOR UPDATE
     `, [orderId, userId]);
     const order = orders[0];
@@ -66,13 +66,29 @@ export async function cancelUserOrder(userId, orderId, reason) {
       WHERE don_hang_id=? AND loai_xuat='BAN_HANG' AND trang_thai<>'DA_HUY'
     `, [`Hủy theo đơn hàng: ${reason}`, order.id]);
 
-      if (order.khuyen_mai_id) {
+    if (order.khuyen_mai_id) {
         await connection.execute("DELETE FROM lich_su_su_dung_khuyen_mai WHERE don_hang_id=?", [order.id]);
       await connection.execute(`
         UPDATE khuyen_mai
         SET so_luot_da_su_dung=GREATEST(so_luot_da_su_dung-1, 0)
         WHERE id=?
       `, [order.khuyen_mai_id]);
+    }
+    if (Number(order.xu_da_dung) > 0) {
+      const [wallets] = await connection.execute(
+        "SELECT id, so_du_kha_dung FROM vi_xu WHERE nguoi_dung_id=? FOR UPDATE",
+        [userId],
+      );
+      if (wallets[0]) {
+        const balance = Number(wallets[0].so_du_kha_dung) + Number(order.xu_da_dung);
+        await connection.execute("UPDATE vi_xu SET so_du_kha_dung=? WHERE id=?", [balance, wallets[0].id]);
+        await connection.execute(`
+          INSERT INTO giao_dich_xu (
+            nguoi_dung_id, don_hang_id, loai_giao_dich, so_xu,
+            so_du_sau_giao_dich, ma_tham_chieu, noi_dung
+          ) VALUES (?, ?, 'HOAN_XU_HUY_DON', ?, ?, ?, ?)
+        `, [userId, order.id, order.xu_da_dung, balance, `ORDER_COIN_REFUND:${order.id}`, `Hoàn xu do hủy đơn #${order.id}`]);
+      }
     }
 
     await connection.commit();
@@ -146,8 +162,15 @@ export async function findCheckoutContext(userId, productIds) {
       AND (SELECT COUNT(*) FROM lich_su_su_dung_khuyen_mai ls WHERE ls.khuyen_mai_id=km.id AND ls.nguoi_dung_id=?) < km.so_luot_toi_da_moi_khach
     GROUP BY km.id ORDER BY km.id
   `, [userId]);
-  const [settings] = await database.query("SELECT phi_van_chuyen, nguong_mien_phi_van_chuyen FROM cau_hinh_cua_hang ORDER BY id LIMIT 1");
-  return { items, promotions, settings: settings[0] ?? { phi_van_chuyen: 0, nguong_mien_phi_van_chuyen: 0 } };
+  const [[settings], [wallets]] = await Promise.all([
+    database.query("SELECT phi_van_chuyen, nguong_mien_phi_van_chuyen FROM cau_hinh_cua_hang ORDER BY id LIMIT 1"),
+    database.execute("SELECT so_du_kha_dung FROM vi_xu WHERE nguoi_dung_id=? LIMIT 1", [userId]),
+  ]);
+  return {
+    items, promotions,
+    settings: settings[0] ?? { phi_van_chuyen: 0, nguong_mien_phi_van_chuyen: 0 },
+    availableCoins: Number(wallets[0]?.so_du_kha_dung) || 0,
+  };
 }
 
 export async function createOrderInTransaction(userId, productIds, input, calculate) {
@@ -181,7 +204,15 @@ export async function createOrderInTransaction(userId, productIds, input, calcul
     if ((input.paymentMethod === "COD" && !storeSettings.bat_cod) || (input.paymentMethod === "CHUYEN_KHOAN" && !storeSettings.bat_chuyen_khoan)) {
       const error = new Error("Phương thức thanh toán hiện đang tạm tắt"); error.statusCode = 409; throw error;
     }
-    const summary = calculate({ items, promotions, settings: storeSettings });
+    const [wallets] = await connection.execute(
+      "SELECT id, so_du_kha_dung FROM vi_xu WHERE nguoi_dung_id=? FOR UPDATE",
+      [userId],
+    );
+    const wallet = wallets[0] ?? null;
+    const summary = calculate({
+      items, promotions, settings: storeSettings,
+      availableCoins: Number(wallet?.so_du_kha_dung) || 0,
+    });
 
     let address = null;
     if (input.addressId) {
@@ -203,15 +234,32 @@ export async function createOrderInTransaction(userId, productIds, input, calcul
       INSERT INTO don_hang (
         ma_don_hang, nguoi_dung_id, khuyen_mai_id, ten_nguoi_nhan, so_dien_thoai, email,
         tinh_thanh, tinh_thanh_ma, quan_huyen, phuong_xa, phuong_xa_ma, dia_chi_chi_tiet,
-        tong_tien_hang, tien_giam, phi_van_chuyen, tong_thanh_toan,
+        tong_tien_hang, tien_giam, xu_da_dung, phi_van_chuyen, tong_thanh_toan,
         phuong_thuc_thanh_toan, trang_thai_thanh_toan, trang_thai_don_hang, ghi_chu_khach_hang
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'CHUA_THANH_TOAN', 'CHO_XAC_NHAN', ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'CHO_XAC_NHAN', ?)
     `, [
       orderCode, userId, summary.promotion?.id ?? null, shipping.name, shipping.phone, customer?.email ?? null,
       shipping.province, shipping.provinceCode ?? null, shipping.district, shipping.ward, shipping.wardCode ?? null, shipping.detail,
-      summary.subtotal, summary.discountAmount, summary.shippingFee, summary.totalPayment,
-      input.paymentMethod, input.customerNote || null,
+      summary.subtotal, summary.discountAmount, summary.coinsUsed, summary.shippingFee, summary.totalPayment,
+      input.paymentMethod, summary.totalPayment === 0 ? "DA_THANH_TOAN" : "CHUA_THANH_TOAN",
+      input.customerNote || null,
     ]);
+    if (summary.coinsUsed > 0) {
+      if (!wallet) {
+        const error = new Error("Ví xu không tồn tại");
+        error.statusCode = 409;
+        throw error;
+      }
+      const balance = Number(wallet.so_du_kha_dung) - summary.coinsUsed;
+      await connection.execute("UPDATE vi_xu SET so_du_kha_dung=? WHERE id=?", [balance, wallet.id]);
+      await connection.execute(`
+        INSERT INTO giao_dich_xu (
+          nguoi_dung_id, don_hang_id, loai_giao_dich, so_xu,
+          so_du_sau_giao_dich, ma_tham_chieu, noi_dung
+        ) VALUES (?, ?, 'SU_DUNG_DON_HANG', ?, ?, ?, ?)
+      `, [userId, orderResult.insertId, -summary.coinsUsed, balance,
+        `ORDER_COIN_REDEMPTION:${orderResult.insertId}`, `Dùng xu thanh toán đơn ${orderCode}`]);
+    }
     if (input.paymentMethod === "CHUYEN_KHOAN") {
       await connection.execute(`
         INSERT INTO giao_dich_thanh_toan (

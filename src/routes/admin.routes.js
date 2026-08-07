@@ -42,6 +42,11 @@ import {
   updateSettings,
   updateSupplier,
   updateUser,
+  createLoyaltyTier,
+  deleteLoyaltyTier,
+  listLoyaltyTiers,
+  recalculateCustomerRanks,
+  updateLoyaltyTier,
 } from "../controllers/admin.controller.js";
 import { uploadImage } from "../controllers/media.controller.js";
 import { authenticate, requireAdmin } from "../middleware/authenticate.js";
@@ -96,3 +101,8 @@ adminRouter.post("/suppliers", createSupplier);
 adminRouter.put("/suppliers/:id", updateSupplier);
 adminRouter.post("/imports", createImport);
 adminRouter.post("/exports", createExport);
+adminRouter.get("/loyalty-tiers", listLoyaltyTiers);
+adminRouter.post("/loyalty-tiers", createLoyaltyTier);
+adminRouter.put("/loyalty-tiers/:id", updateLoyaltyTier);
+adminRouter.delete("/loyalty-tiers/:id", deleteLoyaltyTier);
+adminRouter.post("/loyalty-tiers/recalculate", recalculateCustomerRanks);

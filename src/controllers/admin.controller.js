@@ -40,6 +40,11 @@ import {
   removeAdminReview,
   removeAdminUser,
   recordAdminDocumentPrint,
+  addAdminLoyaltyTier,
+  changeAdminLoyaltyTier,
+  getAdminLoyaltyTiers,
+  recalculateAdminCustomerRanks,
+  removeAdminLoyaltyTier,
 } from "../services/admin.service.js";
 
 function action(service, { status = 200, input = "body", admin = false } = {}) {
@@ -92,6 +97,7 @@ export const createArticle = action(addAdminArticle, { status: 201, admin: true 
 export const updateArticle = action(changeAdminArticle);
 export const deleteArticle = action(removeAdminArticle, { input: null });
 export const listArticleComments = action(getAdminArticleComments, { input: "query" });
+
 export const updateArticleComment = action(changeAdminArticleComment);
 export const deleteArticleComment = action(removeAdminArticleComment, { input: null });
 export const showInventory = action(getAdminInventory, { input: null });
@@ -99,3 +105,8 @@ export const createSupplier = action(addAdminSupplier, { status: 201 });
 export const updateSupplier = action(changeAdminSupplier);
 export const createImport = action(addAdminImport, { status: 201, admin: true });
 export const createExport = action(addAdminExport, { status: 201, admin: true });
+export const listLoyaltyTiers = action(getAdminLoyaltyTiers, { input: null });
+export const createLoyaltyTier = action(addAdminLoyaltyTier, { status: 201 });
+export const updateLoyaltyTier = action(changeAdminLoyaltyTier);
+export const deleteLoyaltyTier = action(removeAdminLoyaltyTier, { input: null });
+export const recalculateCustomerRanks = action(recalculateAdminCustomerRanks, { input: null });

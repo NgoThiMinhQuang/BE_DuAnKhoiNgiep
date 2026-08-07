@@ -40,6 +40,11 @@ import {
   updateAdminSettings,
   updateAdminSupplier,
   updateAdminUser,
+  findAdminLoyaltyTiers,
+  createAdminLoyaltyTier,
+  updateAdminLoyaltyTier,
+  deleteAdminLoyaltyTier,
+  recalculateAllCustomerRanks,
 } from "../repositories/admin.repository.js";
 import { calculateProfitability } from "../domain/profitability.js";
 import { notifyUser } from "./notification.service.js";
@@ -914,4 +919,47 @@ export async function addAdminExport(adminId, input) {
   };
   const result = await createAdminExport(adminId, normalized);
   return { id: String(result.id), code: normalized.code, total: result.total };
+}
+
+export async function getAdminLoyaltyTiers() {
+  return findAdminLoyaltyTiers();
+}
+
+export async function addAdminLoyaltyTier(input) {
+  const code = requiredText(input.code, "Mã hạng").toUpperCase().replaceAll(/\s+/g, "_");
+  const name = requiredText(input.name, "Tên hạng thành viên");
+  const minimumSpend = numberValue(input.minimumSpend ?? 0, "Mức chi tiêu tối thiểu", 0);
+  const earningRate = numberValue(input.earningRate ?? 0.01, "Tỷ lệ tích xu", 0);
+  if (earningRate > 1) throw badRequest("Tỷ lệ tích xu không được lớn hơn 1 (100%)");
+  const status = input.status === "TAM_DUNG" ? "TAM_DUNG" : "HOAT_DONG";
+
+  const id = await createAdminLoyaltyTier({ code, name, minimumSpend, earningRate, status });
+  return { id: String(id) };
+}
+
+export async function changeAdminLoyaltyTier(tierId, input) {
+  const tiers = await findAdminLoyaltyTiers();
+  const current = tiers.find((t) => t.id === String(tierId));
+  if (!current) throw badRequest("Không tìm thấy hạng thành viên", 404);
+
+  const code = input.code !== undefined ? requiredText(input.code, "Mã hạng").toUpperCase().replaceAll(/\s+/g, "_") : current.code;
+  const name = input.name !== undefined ? requiredText(input.name, "Tên hạng thành viên") : current.name;
+  const minimumSpend = input.minimumSpend !== undefined ? numberValue(input.minimumSpend, "Mức chi tiêu tối thiểu", 0) : current.minimumSpend;
+  const earningRate = input.earningRate !== undefined ? numberValue(input.earningRate, "Tỷ lệ tích xu", 0) : current.earningRate;
+  if (earningRate > 1) throw badRequest("Tỷ lệ tích xu không được lớn hơn 1 (100%)");
+  const status = input.status !== undefined ? (input.status === "TAM_DUNG" ? "TAM_DUNG" : "HOAT_DONG") : current.status;
+
+  const success = await updateAdminLoyaltyTier(tierId, { code, name, minimumSpend, earningRate, status });
+  if (!success) throw badRequest("Không tìm thấy hạng thành viên", 404);
+  return getAdminLoyaltyTiers();
+}
+
+export async function removeAdminLoyaltyTier(tierId) {
+  const success = await deleteAdminLoyaltyTier(tierId);
+  if (!success) throw badRequest("Không tìm thấy hạng thành viên", 404);
+}
+
+export async function recalculateAdminCustomerRanks() {
+  const affected = await recalculateAllCustomerRanks();
+  return { affectedCount: affected };
 }

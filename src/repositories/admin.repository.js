@@ -1346,3 +1346,144 @@ export async function createAdminExport(adminId, input) {
     throw error;
   } finally { connection.release(); }
 }
+
+export async function findAdminLoyaltyTiers() {
+  const [rows] = await database.query(`
+    SELECT h.id, h.ma_hang, h.ten_hang, h.chi_tieu_toi_thieu, h.ty_le_tich_xu, h.trang_thai,
+      COUNT(vx.id) AS so_khach_hang
+    FROM hang_thanh_vien h
+    LEFT JOIN vi_xu vx ON vx.hang_thanh_vien_id = h.id
+    GROUP BY h.id, h.ma_hang, h.ten_hang, h.chi_tieu_toi_thieu, h.ty_le_tich_xu, h.trang_thai
+    ORDER BY h.chi_tieu_toi_thieu ASC
+  `);
+  return rows.map((row) => ({
+    id: String(row.id),
+    code: row.ma_hang,
+    name: row.ten_hang,
+    minimumSpend: Number(row.chi_tieu_toi_thieu),
+    earningRate: Number(row.ty_le_tich_xu),
+    status: row.trang_thai,
+    customerCount: Number(row.so_khach_hang || 0),
+  }));
+}
+
+export async function recalculateAllCustomerRanks(connection = database) {
+  const [result] = await connection.execute(`
+    UPDATE vi_xu vx
+    SET vx.hang_thanh_vien_id = (
+      SELECT h.id
+      FROM hang_thanh_vien h
+      WHERE h.trang_thai = 'HOAT_DONG'
+        AND h.chi_tieu_toi_thieu <= vx.chi_tieu_xep_hang
+      ORDER BY h.chi_tieu_toi_thieu DESC
+      LIMIT 1
+    )
+  `);
+  return result.affectedRows ?? 0;
+}
+
+export async function updateAdminLoyaltyTier(tierId, changes) {
+  const connection = await database.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [existing] = await connection.execute(
+      "SELECT * FROM hang_thanh_vien WHERE id=? FOR UPDATE",
+      [tierId],
+    );
+    if (!existing[0]) {
+      await connection.rollback();
+      return false;
+    }
+    const current = existing[0];
+    const code = changes.code !== undefined ? String(changes.code).trim().toUpperCase() : current.ma_hang;
+    const name = changes.name !== undefined ? String(changes.name).trim() : current.ten_hang;
+    const minimumSpend = changes.minimumSpend !== undefined ? Math.max(0, Number(changes.minimumSpend) || 0) : Number(current.chi_tieu_toi_thieu);
+    const earningRate = changes.earningRate !== undefined ? Math.max(0, Math.min(1, Number(changes.earningRate) || 0)) : Number(current.ty_le_tich_xu);
+    const status = changes.status !== undefined ? (changes.status === "TAM_DUNG" ? "TAM_DUNG" : "HOAT_DONG") : current.trang_thai;
+
+    await connection.execute(`
+      UPDATE hang_thanh_vien
+      SET ma_hang=?, ten_hang=?, chi_tieu_toi_thieu=?, ty_le_tich_xu=?, trang_thai=?
+      WHERE id=?
+    `, [code, name, minimumSpend, earningRate, status, tierId]);
+
+    await recalculateAllCustomerRanks(connection);
+
+    await connection.commit();
+    return true;
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
+export async function createAdminLoyaltyTier(data) {
+  const connection = await database.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [existing] = await connection.execute(
+      "SELECT id FROM hang_thanh_vien WHERE ma_hang=? LIMIT 1",
+      [data.code],
+    );
+    if (existing[0]) {
+      const error = new Error("Mã hạng thành viên đã tồn tại");
+      error.statusCode = 409;
+      throw error;
+    }
+    const [result] = await connection.execute(`
+      INSERT INTO hang_thanh_vien (ma_hang, ten_hang, chi_tieu_toi_thieu, ty_le_tich_xu, trang_thai)
+      VALUES (?, ?, ?, ?, ?)
+    `, [data.code, data.name, data.minimumSpend, data.earningRate, data.status || "HOAT_DONG"]);
+
+    await recalculateAllCustomerRanks(connection);
+
+    await connection.commit();
+    return result.insertId;
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
+export async function deleteAdminLoyaltyTier(tierId) {
+  const connection = await database.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [existing] = await connection.execute(
+      "SELECT * FROM hang_thanh_vien WHERE id=? FOR UPDATE",
+      [tierId],
+    );
+    if (!existing[0]) {
+      await connection.rollback();
+      return false;
+    }
+    const tier = existing[0];
+    if (Number(tier.chi_tieu_toi_thieu) === 0 && tier.ma_hang === "THANH_VIEN") {
+      const error = new Error("Không thể xóa hạng thành viên mặc định (chi tiêu 0đ)");
+      error.statusCode = 409;
+      throw error;
+    }
+    const [totalTiers] = await connection.execute("SELECT COUNT(*) AS total FROM hang_thanh_vien");
+    if (totalTiers[0].total <= 1) {
+      const error = new Error("Hệ thống phải có ít nhất 1 hạng thành viên");
+      error.statusCode = 409;
+      throw error;
+    }
+
+    await connection.execute("DELETE FROM hang_thanh_vien WHERE id=?", [tierId]);
+    await recalculateAllCustomerRanks(connection);
+
+    await connection.commit();
+    return true;
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+

@@ -933,6 +933,11 @@ export async function addAdminLoyaltyTier(input) {
   if (earningRate > 1) throw badRequest("Tỷ lệ tích xu không được lớn hơn 1 (100%)");
   const status = input.status === "TAM_DUNG" ? "TAM_DUNG" : "HOAT_DONG";
 
+  const tiers = await findAdminLoyaltyTiers();
+  if (tiers.some((t) => t.minimumSpend === minimumSpend)) {
+    throw badRequest(`Đã có hạng thành viên sử dụng mức chi tiêu tối thiểu ${minimumSpend.toLocaleString("vi-VN")}đ`);
+  }
+
   const id = await createAdminLoyaltyTier({ code, name, minimumSpend, earningRate, status });
   return { id: String(id) };
 }
@@ -948,6 +953,10 @@ export async function changeAdminLoyaltyTier(tierId, input) {
   const earningRate = input.earningRate !== undefined ? numberValue(input.earningRate, "Tỷ lệ tích xu", 0) : current.earningRate;
   if (earningRate > 1) throw badRequest("Tỷ lệ tích xu không được lớn hơn 1 (100%)");
   const status = input.status !== undefined ? (input.status === "TAM_DUNG" ? "TAM_DUNG" : "HOAT_DONG") : current.status;
+
+  if (tiers.some((t) => t.minimumSpend === minimumSpend && t.id !== String(tierId))) {
+    throw badRequest(`Đã có hạng thành viên khác sử dụng mức chi tiêu tối thiểu ${minimumSpend.toLocaleString("vi-VN")}đ`);
+  }
 
   const success = await updateAdminLoyaltyTier(tierId, { code, name, minimumSpend, earningRate, status });
   if (!success) throw badRequest("Không tìm thấy hạng thành viên", 404);
